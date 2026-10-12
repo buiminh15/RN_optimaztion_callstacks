@@ -1,0 +1,91 @@
+<span class="kicker">Chương 10 · Phần 2: Native · Guide</span>
+<h1>Khác biệt giữa các nền tảng</h1>
+<p class="lead">Phần 1 cho thấy tới 80% vấn đề hiệu năng đến từ JS — nghĩa là vẫn còn ít nhất 20% nằm ở phía native. Phần 2 đi vào đó. Chương này dựng nền: vòng đời khởi động app, mô hình luồng, và bộ công cụ iOS/Android mà bạn sẽ dùng xuyên suốt.</p>
+
+<h2 id="startup">1. Từ lúc chạm icon đến khi thấy UI</h2>
+<p>Hiển thị UI không đơn giản. Hãy xem trên Android:</p>
+<ol class="steps">
+  <li><b>Khởi tạo process.</b> OS tạo process và một sandbox bảo mật cho dữ liệu của app. Tùy cơ chế, OS có thể khởi tạo một phần hoặc toàn bộ <i>trước cả khi</i> bạn mở app — gọi là <b>warm/hot startup</b> (Android) hay <b>prewarming</b> (iOS).</li>
+  <li><b>Khởi tạo application.</b> OS gọi <code>Application.onCreate</code>, rồi tạo Activity và <code>Activity.onCreate()</code>. Đây là nơi code native khởi tạo và hành trình React Native bắt đầu.</li>
+  <li><b>Vòng đời tiếp theo.</b> <code>Activity.onStart()</code>… rồi UI thread xử lý layout, đo và vẽ view lên màn hình.</li>
+</ol>
+<div class="callout warn"><b class="t">Khi đo thời gian khởi động</b><p>Luôn đo <b>cold startup</b> (process chưa tồn tại). Warm/hot/prewarming làm số đo đẹp hơn thực tế.</p></div>
+
+<h2 id="threading">2. Mô hình luồng của React Native</h2>
+<p>Dân JS quen một luồng + event loop. Dân mobile quen hai loại: <b>UI thread</b> (vẽ giao diện) và <b>background thread</b> (việc nặng, business logic). Một <b>thread</b> là đơn vị thực thi nhỏ nhất của một process, chia sẻ bộ nhớ của process đó.</p>
+<p>React Native mang mô hình khai báo của web vào mobile: phần lớn việc phân luồng được che giấu, renderer sẽ chạy code đúng luồng phù hợp. Event loop cũng có trong app RN — nằm trong renderer C++ <b>Fabric</b> và được Hermes truy cập.</p>
+
+<div class="demo" id="boot">
+  <h4>Demo · Chuỗi khởi động React Native (Android)</h4>
+  <p class="d">Bấm từng bước để xem điều gì chạy ở đâu.</p>
+  <div class="row"><button class="btn" id="bt-n">Bước tiếp ▶</button><button class="btn ghost" id="bt-r">Làm lại</button></div>
+  <div id="bt-l" style="margin-top:12px"></div>
+</div>
+<p>Cụ thể, sau khi native app khởi tạo, code Kotlin trong thư viện <code>com.facebook.react:react-android</code> khởi tạo <b>Hermes</b>, nạp JS bundle (thường ở dạng <b>Hermes Bytecode – HBC</b>, tránh bước thông dịch tốn kém) vào bộ nhớ và chạy trực tiếp trên <b>JS thread</b> (<code>mqt_v_js</code>). Trước khi chạy JS, nó xử lý các native module được đánh dấu chạy sớm (eager). Sau đó JS chạy, các TurboModule khởi tạo lười từ thread riêng (<code>mqt_v_native</code>) và việc render/sự kiện được lên lịch sang UI thread, nơi Fabric xử lý.</p>
+<p class="muted">Chương sau sẽ dùng profiler của Android/iOS để tự quan sát các giai đoạn này.</p>
+
+<h2 id="tools">3. Hai thế giới công cụ: Android Studio và Xcode</h2>
+<div class="callout"><b class="t">Dùng Expo?</b><p>Expo che bớt phần native (Dev Clients, Config Plugins…), nên bạn ít phải rời IDE quen thuộc. Nội dung phần này chủ yếu dành cho dự án dùng <b>React Native Community CLI</b>.</p></div>
+<p>Nên dùng IDE của Google/Apple cho Android/iOS (bạn có thể viết Swift/Kotlin trong VSCode nhưng IDE gốc "bất khả chiến bại" hơn). Chúng có sẵn:</p>
+<table class="cmp"><tr><th>Tính năng</th><th>Ý nghĩa</th></tr>
+<tr><td>View Hierarchy Debugger</td><td>Xem trực quan cây view, ràng buộc, lỗi render.</td></tr>
+<tr><td>Instrumentation &amp; Profiling</td><td>Theo dõi CPU, bộ nhớ, pin, độ mượt: <b>Android Studio Profiler</b>, <b>Xcode Instruments</b>.</td></tr>
+<tr><td>Advanced Debugging</td><td>LLDB/GDB (Xcode), Logcat/Debugger (Android Studio): stack trace, crash, memory leak.</td></tr>
+<tr><td>Tích hợp build</td><td>Gradle / hệ thống build Xcode: dependency, variant, ký, đóng gói, đưa lên store.</td></tr>
+<tr><td>Test native</td><td>XCTest (Xcode), Espresso/JUnit (Android Studio).</td></tr></table>
+
+<h2 id="deps">4. Quản lý dependency theo nền tảng</h2>
+<p>Một thư viện RN có thể gồm JS + iOS + Android. <b>Autolinking</b> tự phát hiện và liên kết các module dành riêng cho RN. Nếu dependency có code native nhưng không có cấu trúc module RN thì cần thêm bước thủ công.</p>
+<div class="demo" data-tabs>
+  <h4>So sánh · Dependency</h4>
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost" data-t="js">JavaScript</button><button class="btn ghost" data-t="ios">iOS</button><button class="btn ghost" data-t="and">Android</button></div>
+  <div data-p="js">
+    <p><b>npm registry</b> (hoặc Yarn, PNPM, Bun). Gói có thể chỉ có JS hoặc kèm code native.</p>
+<pre><code>&gt; npm install react-native-bottom-tabs</code></pre>
+    <p class="muted">File cần để ý: <code>package.json</code> (dependency, script), <code>node_modules</code>, <code>package-lock.json</code> (khóa phiên bản).</p></div>
+  <div data-p="ios">
+    <p><b>CocoaPods</b>. Thư viện RN đưa code native lên npm; CocoaPods trỏ tới đường dẫn cục bộ. Dependency iOS thuần (không phải thư viện RN) thì thêm vào <code>Podfile</code>:</p>
+<pre><code><span class="c"># ios/Podfile</span>
+target <span class="s">'HelloWorld'</span> do
+  pod <span class="s">'SDWebImage'</span>, <span class="s">'~&gt; 5.0'</span>   <span class="c"># &gt;=5.0 và &lt;6.0</span>
+end
+
+&gt; cd ios &amp;&amp; bundle exec pod install</code></pre>
+    <p class="muted"><code>~&gt; 5.0</code> cho phép ≥5.0 &lt;6.0; <code>~&gt; 5.0.1</code> cho phép ≥5.0.1 &lt;5.1. Dùng <code>bundle exec</code> để lấy đúng phiên bản CocoaPods theo <code>Gemfile</code>. Mở Xcode nhanh bằng <code>xed .</code>; luôn mở <code>.xcworkspace</code> chứ không phải <code>.xcodeproj</code>. File cần để ý: <code>Podfile</code>, <code>Gemfile</code>, <code>Pods/</code> (không commit). RN chưa hỗ trợ Swift Package Manager.</p></div>
+  <div data-p="and">
+    <p><b>Gradle</b>. Module RN tham chiếu cục bộ từ <code>node_modules/</code>. Dependency Android thuần thêm thủ công vào <code>android/app/build.gradle</code> rồi sync:</p>
+<pre><code>dependencies {
+  implementation <span class="s">'com.github.bumptech.glide:glide:4.12.0'</span>
+}
+&gt; cd android &amp;&amp; ./gradlew clean</code></pre>
+    <p class="muted">Phiên bản: chính xác (<code>4.12.0</code>), khoảng (<code>4.+</code>), động (<code>+</code> — không nên). Production: dùng phiên bản chính xác. File cần để ý: <code>android/build.gradle</code>, <code>android/app/build.gradle</code>, <code>gradle.properties</code> (cờ như Hermes), <code>gradlew</code>/<code>gradlew.bat</code> (Gradle Wrapper), <code>.gradle/</code> (không commit). Xem task: <code>./gradlew tasks</code>.</p></div>
+</div>
+
+<h2 id="build">5. Build: ba thế giới khác nhau</h2>
+<div class="demo" data-tabs>
+  <h4>So sánh · Quy trình build</h4>
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost" data-t="js">JavaScript</button><button class="btn ghost" data-t="ios">iOS</button><button class="btn ghost" data-t="and">Android</button></div>
+  <div data-p="js"><p>JS được engine thông dịch lúc chạy; nhưng cần <b>transpile</b> để tương thích. <b>Metro</b> (bundler) dựa trên <b>Babel</b> để đưa cú pháp hiện đại về dạng Hermes hiểu được. Phiên bản JS hỗ trợ phụ thuộc phiên bản Hermes; preset Babel của RN luôn đồng bộ với engine.</p></div>
+  <div data-p="ios"><p>Swift/Objective-C là ngôn ngữ biên dịch. Hệ thống build Xcode dùng <b>Clang</b> (Obj-C) và <b>LLVM</b> (Swift).</p>
+    <ol class="steps"><li><b>Source Compilation</b> → mã máy</li><li><b>Linking</b> code + framework + thư viện CocoaPods</li><li><b>Signing</b> bằng certificate &amp; provisioning profile</li><li><b>Packaging</b> → <code>.ipa</code></li></ol></div>
+  <div data-p="and"><p>Gradle tự động hóa build/test/đóng gói. Java/Kotlin được biên dịch sang định dạng <b>DEX</b> cho Android Runtime (ART).</p>
+    <ol class="steps"><li><b>Source Compilation</b> → <code>.class</code></li><li><b>DEX Conversion</b> → <code>.dex</code></li><li><b>Resource Processing</b> (XML layout, ảnh, assets)</li><li><b>Linking</b> thư viện (Gradle)</li><li><b>Signing</b> bằng keystore</li><li><b>Packaging</b> → <code>.apk</code> / <code>.aab</code></li></ol></div>
+</div>
+
+<h2 id="run">6. Chạy app trên máy ảo/thiết bị</h2>
+<table class="cmp"><tr><th>Android (emulator)</th><th>iOS (simulator)</th></tr>
+<tr><td>AVD Manager trong Android Studio<br><code>emulator -list-avds</code><br><code>emulator @Pixel_6_API_34</code><br><code>adb devices</code></td>
+<td>Xcode → Open Developer Tool → Simulator<br><code>xcrun simctl list</code><br><code>xcrun simctl boot "iPhone 15"</code><br><code>xcrun simctl shutdown all</code></td></tr></table>
+<p>Các công cụ giúp quản lý simulator ngoài IDE mà tác giả dùng hàng ngày: <b>MiniSim</b>, <b>Android iOS Emulator for VSCode</b>, <b>Expo Orbit</b>, <b>Shopify Tophat</b>.</p>
+<p class="src">Bổ sung: <a href="https://developer.android.com/topic/performance/vitals/launch-time" target="_blank" rel="noopener">Android – App startup time</a> · <a href="https://reactnative.dev/docs/environment-setup" target="_blank" rel="noopener">React Native – Environment setup</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="0"><b>1.</b> Khi đo thời gian khởi động nên dùng loại nào?
+  <div class="opts"><button>Cold startup</button><button>Warm startup</button><button>Prewarming</button></div>
+  <div class="exp">Warm/hot/prewarming có thể khởi tạo trước nên làm số đo đẹp hơn thực tế.</div></div>
+<div class="q" data-ans="2"><b>2.</b> iOS dùng công cụ nào để quản lý dependency native trong RN?
+  <div class="opts"><button>Gradle</button><button>Swift Package Manager</button><button>CocoaPods</button></div>
+  <div class="exp">RN chưa hỗ trợ SPM; CocoaPods là mặc định.</div></div>
+<div class="q" data-ans="1"><b>3.</b> JS bundle ở dạng nào để Hermes chạy trực tiếp mà bớt thông dịch?
+  <div class="opts"><button>DEX</button><button>Hermes Bytecode (HBC)</button><button>IPA</button></div>
+  <div class="exp">HBC được nạp vào bộ nhớ và chạy trên JS thread.</div></div>

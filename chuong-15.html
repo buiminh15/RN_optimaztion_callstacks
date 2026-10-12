@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 15 – View Flattening</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html" selected>15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#what">View flattening là gì?</a><a href="#beware">Cẩn thận khi flattening "quá tay"</a><a href="#debug">Debug cây view</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 15 · Phần 2: Native · Best practice</span>
+<h1>View Flattening</h1>
+<p class="lead">React cho phép ghép component như xếp LEGO. Trên web, tạo một <code>&lt;div/&gt;</code> khá rẻ; trên native thì đắt hơn. Để bù, React Native "làm phẳng" cây view bất cứ khi nào có thể.</p>
+
+<h2 id="what">1. View flattening là gì?</h2>
+<p>Renderer nhận diện các node <b>layout-only</b>: chỉ ảnh hưởng bố cục của <code>View</code> chứa chúng, <i>không vẽ gì</i> lên màn hình. Những node đó được loại bỏ → cây view native <b>nông hơn</b>, giảm áp lực bộ nhớ và CPU.</p>
+<div class="callout"><b class="t">Lịch sử</b><p>Ban đầu chỉ có ở renderer Android. Khi New Architecture viết lại lõi bằng C++, tối ưu này được chuyển sang renderer dùng chung nên <b>iOS cũng có</b>.</p></div>
+
+<div class="demo" id="flat">
+  <h4>Demo · Cây view JS và cây view native</h4>
+  <p class="d">Các node có viền nét đứt là <i>layout-only</i> (chỉ có style bố cục như flex, padding, margin). Bật/tắt flattening để xem số view native.</p>
+  <div class="row"><label style="cursor:pointer"><input type="checkbox" id="fl-on" checked> Bật view flattening</label><label style="cursor:pointer"><input type="checkbox" id="fl-col"> Đặt <code>collapsable={false}</code> cho container</label></div>
+  <div class="grid2" style="margin-top:10px">
+    <div><div class="muted" style="font-size:13px;margin-bottom:4px">Cây JS (React)</div><div id="fl-js" class="tree"></div></div>
+    <div><div class="muted" style="font-size:13px;margin-bottom:4px">Cây native thực tế</div><div id="fl-nat" class="tree"></div></div>
+  </div>
+  <p style="margin:.6em 0 0">View JS: <b id="fl-nj"></b> · View native: <b id="fl-nn"></b></p>
+</div>
+
+<h2 id="beware">2. Cẩn thận khi flattening "quá tay"</h2>
+<p>Thường tuyệt vời, nhưng đôi khi bạn muốn view ở yên trong cây — điển hình là native UI component nhận children:</p>
+<pre><code>&lt;MyNativeComponent&gt;
+  &lt;Child1/&gt;
+  &lt;Child2/&gt;
+  &lt;Child3/&gt;
+&lt;/MyNativeComponent&gt;</code></pre>
+<p>Ở phía native bạn kỳ vọng nhận mảng <b>3</b> view. Nhưng nếu container của <code>Child1</code> bị coi là layout-only và bị flatten, bạn có thể nhận tất cả con của nó: nếu Child1 có 3 view con, native nhận <b>5</b> children thay vì 3.</p>
+<pre><code>&lt;MyNativeComponent&gt;
+  <span class="c">/* Child1 bị flatten thành 3 View */</span>
+  &lt;View/&gt;&lt;View/&gt;&lt;View/&gt;
+  &lt;Child2/&gt;
+  &lt;Child3/&gt;
+&lt;/MyNativeComponent&gt;</code></pre>
+<p>Giả định "số con JS = số con native" là <b>không an toàn</b>. Khi thật sự cần đếm đúng, dùng prop <code>collapsable</code>: đặt <code>false</code> để view không bị gộp.</p>
+<pre><code>&lt;MyNativeComponent&gt;
+  &lt;Child1 <span class="h">collapsable={false}</span> /&gt;
+  &lt;Child2 <span class="h">collapsable={false}</span> /&gt;
+  &lt;Child3 <span class="h">collapsable={false}</span> /&gt;
+&lt;/MyNativeComponent&gt;</code></pre>
+
+<h2 id="debug">3. Debug cây view</h2>
+<div class="demo" data-tabs>
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost" data-t="x">Xcode</button><button class="btn ghost" data-t="a">Android Studio</button></div>
+  <div data-p="x"><p>Khi chạy app qua Xcode, thanh debug có nút <b>"Debug View Hierarchy"</b>. Nhấn → app tạm dừng như ở breakpoint và bạn thấy cây view native. Thanh bên trái liệt kê view native tương ứng component JS: một <code>&lt;View/&gt;</code> của JS là <code>RCTViewComponentView</code> — cùng khối xây dựng như app native thuần. (Đúng vậy, nó thật sự là app native!)</p></div>
+  <div data-p="a"><p>Gọi là <b>Layout Inspector</b>: <b>View → Tool Windows → Layout Inspector</b>. Giao diện tương tự Xcode; <code>&lt;View/&gt;</code> của JS tương ứng <code>ReactViewGroup</code> chứa các <code>ReactTextView</code>.</p></div>
+</div>
+<div class="callout"><b class="t">Tóm lại</b><p>Ý tưởng là flattening phải <b>trong suốt</b> — thường bạn không phải nghĩ tới nó. Khi gặp lỗi do tối ưu bị áp sai, trình debug layout giúp bạn hiểu, và bạn có thể bỏ qua flattening cho view có vấn đề.</p></div>
+<p class="src">Bổ sung: <a href="https://reactnative.dev/docs/next/view-flattening" target="_blank" rel="noopener">React Native – View Flattening (docs)</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Node "layout-only" là gì?
+  <div class="opts"><button>Node chạy trên layout thread</button><button>Node chỉ ảnh hưởng bố cục, không tự vẽ gì lên màn hình</button><button>Node không có children</button></div>
+  <div class="exp">Những node này có thể bị loại khỏi cây native.</div></div>
+<div class="q" data-ans="0"><b>2.</b> Muốn đảm bảo view luôn tồn tại trong cây native?
+  <div class="opts"><button><code>collapsable={false}</code></button><button><code>flatten={false}</code></button><button>Bọc trong <code>memo</code></button></div>
+  <div class="exp">collapsable ngăn view bị gộp.</div></div>
+<div class="q" data-ans="2"><b>3.</b> Công cụ xem cây view trên Android?
+  <div class="opts"><button>Instruments</button><button>Perfetto</button><button>Layout Inspector</button></div>
+  <div class="exp">View → Tool Windows → Layout Inspector.</div></div>
+<div class="chnav"><a href="chuong-14.html"><small>← Chương 14</small>Mô hình luồng TurboModules & Fabric</a><a class="next" href="chuong-16.html"><small>Chương 16 →</small>Dùng SDK native thay vì web</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

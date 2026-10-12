@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 9 – Animation mượt không rớt khung</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html" selected>9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#threads">Main thread (UI thread) là gì?</a><a href="#reanimated">React Native Reanimated và worklet</a><a href="#interaction">InteractionManager</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 9 · Phần 1: JavaScript · Best practice</span>
+<h1>Animation mượt, không rớt khung hình</h1>
+<p class="lead">Animation ≥ 60 FPS là yếu tố quyết định cảm giác "chau chuốt". Bí quyết trong React Native: <b>chạy animation trên UI thread</b>, đừng để nó phụ thuộc vào JS thread đang bận.</p>
+
+<h2 id="threads">1. Main thread (UI thread) là gì?</h2>
+<p>Main thread — còn gọi là <b>UI thread</b> (hai tên là một) — chịu trách nhiệm vẽ giao diện và xử lý thao tác chạm. Mọi cập nhật hình ảnh xảy ra ở đây. Nó khác với <b>JS thread</b>, nơi phần lớn code React Native của bạn chạy.</p>
+<div class="demo" id="anim">
+  <h4>Demo · Animation trên UI thread vs trên JS thread</h4>
+  <p class="d">Trong trình duyệt: hình tròn trên chạy bằng CSS transform (giống animation ở UI thread, trình duyệt tự vẽ), hình dưới được cập nhật bằng JavaScript mỗi khung (như animation ở JS thread). Bấm nút để chặn luồng JS 1,5 giây.</p>
+  <div class="lane"><b>🧵 UI thread — CSS animation</b><div class="stage" style="height:52px"><div class="ball" id="an-css" style="top:9px"></div></div></div>
+  <div class="lane"><b>🧵 JS thread — cập nhật bằng JavaScript</b><div class="stage" style="height:52px"><div class="ball" id="an-js" style="top:9px;background:var(--warn)"></div></div></div>
+  <button class="btn" id="an-block">Chặn JS thread 1,5 giây</button>
+  <span class="muted" style="font-size:14px">&nbsp;→ bóng JS đứng yên, bóng CSS vẫn chạy.</span>
+</div>
+<div class="callout warn"><b class="t">Lưu ý</b><p>Đây chỉ là phép ẩn dụ trong trình duyệt. Trong RN, animation viết bằng Animated API thuần JS (không native driver) sẽ giật như bóng dưới khi JS thread bận.</p></div>
+
+<h2 id="reanimated">2. React Native Reanimated và worklet</h2>
+<p>Muốn thêm animation, hãy dùng <b>React Native Reanimated</b> — tiêu chuẩn của ngành (tính đến 1/2025 có gần 1 triệu lượt tải mỗi tuần). Nó chạy animation thẳng trên UI thread nhờ <b>worklet</b>: những hàm JavaScript ngắn có thể chạy trên UI thread (và cả trên JS thread như hàm thường).</p>
+<div class="callout"><b class="t">Ý tưởng lan rộng</b><p>Worklet do Reanimated tiên phong và đã xuất hiện ở thư viện khác như VisionCamera, LiveMarkdown. Các thư viện này dùng <code>createWorkletRuntime</code> để tạo JS runtime riêng, chạy worklet trên luồng khác.</p></div>
+<p>Phần lớn code trong Reanimated mặc định chạy trên UI thread, ví dụ <code>useAnimatedStyle</code>:</p>
+<pre><code><span class="k">const</span> style = useAnimatedStyle(() =&gt; {
+  console.log(<span class="s">'Running on the UI thread'</span>);
+  <span class="k">return</span> { opacity: <span class="s">0.2</span> };
+});</code></pre>
+<h3><code>runOnUI</code> và <code>runOnJS</code></h3>
+<p><code>runOnUI</code> chạy một đoạn code thủ công trên UI thread — dùng với <code>useEffect</code> để bắt đầu animation khi mount/unmount, hoặc với <code>measure</code>, <code>scrollTo</code> (chỉ có trên UI thread).</p>
+<pre><code>runOnUI(() =&gt; { console.log(<span class="s">'Running on the UI thread'</span>); });</code></pre>
+<p><code>runOnJS</code> làm ngược lại: gọi hàm <b>không phải worklet</b> (ví dụ từ thư viện ngoài, analytics, cập nhật state) từ UI thread về JS thread:</p>
+<pre><code><span class="k">const</span> notifyCompletion = () =&gt; {            <span class="c">// chạy ở JS thread</span>
+  console.log(<span class="s">'Animation completed!'</span>);       <span class="c">// analytics, setState…</span>
+};
+
+<span class="k">const</span> animatedStyle = useAnimatedStyle(() =&gt; {
+  <span class="k">if</span> (progress.value &gt;= <span class="s">1</span>) {
+    <span class="h">runOnJS(notifyCompletion)()</span>;           <span class="c">// UI thread → JS thread</span>
+  }
+  <span class="k">return</span> {
+    opacity: progress.value,
+    transform: [{ scale: withSpring(progress.value) }],
+  };
+});</code></pre>
+<h3>Chọn luồng nào?</h3>
+<div class="grid2">
+  <div class="card"><span class="pill">UI thread</span><ul style="padding-left:1.2em;margin:.6em 0 0"><li>Animation, transform, thay đổi layout</li><li>Thao tác trực tiếp lên phần tử UI</li></ul></div>
+  <div class="card"><span class="pill">JS thread</span><ul style="padding-left:1.2em;margin:.6em 0 0"><li>Tính toán phức tạp, xử lý dữ liệu</li><li>Truy cập state/props, business logic</li></ul></div>
+</div>
+
+<h2 id="interaction">3. InteractionManager</h2>
+<p>Khi người dùng đang tương tác (chạm, vuốt) mà JS thread lại chạy tác vụ nặng thì dễ giật. <code>InteractionManager</code> cho phép <b>hoãn công việc nặng sang sau khi các tương tác/animation kết thúc</b>:</p>
+<pre><code>InteractionManager.runAfterInteractions(() =&gt; {
+  console.log(<span class="s">'Running after interactions'</span>);
+});</code></pre>
+<p>Hệ thống chạm coi một hoặc nhiều lần chạm đang diễn ra là "interaction" và trì hoãn callback tới khi các chạm kết thúc/hủy. Bạn cũng có thể đăng ký animation của mình:</p>
+<pre><code><span class="k">const</span> handle = InteractionManager.createInteractionHandle();
+<span class="c">// chạy animation… (các task runAfterInteractions được xếp hàng)</span>
+InteractionManager.clearInteractionHandle(handle);  <span class="c">// xong → task trong hàng đợi mới chạy</span></code></pre>
+<h3>Kết hợp với React Navigation</h3>
+<p>Điển hình: <code>useFocusEffect</code> chạy ngay khi màn hình được focus — lúc animation chuyển màn hình có thể chưa xong. React Navigation chạy animation trên UI thread nên thường ổn, nhưng nếu effect cập nhật UI hoặc render nặng thì animation vẫn bị ảnh hưởng. Hoãn bằng InteractionManager:</p>
+<pre><code>useFocusEffect(
+  React.useCallback(() =&gt; {
+    <span class="k">const</span> task = InteractionManager.runAfterInteractions(() =&gt; {
+      <span class="c">// tác vụ nặng cuối cùng cập nhật UI</span>
+    });
+    <span class="k">return</span> () =&gt; task.cancel();
+  }, [])
+);</code></pre>
+<div class="callout"><b class="t">Thay thế hiện đại</b><p>Ngoài <code>InteractionManager</code> (API riêng của RN), có thể dùng <code>startTransition</code> của React để dời cập nhật không quan trọng — xem <a href="chuong-7.html#transition">Chương 7</a>.</p></div>
+<p class="src">Bổ sung: <a href="https://docs.swmansion.com/react-native-reanimated/" target="_blank" rel="noopener">Reanimated docs</a> · <a href="https://reactnative.dev/docs/interactionmanager" target="_blank" rel="noopener">InteractionManager</a> · <a href="https://reactnavigation.org/docs/use-focus-effect/" target="_blank" rel="noopener">useFocusEffect</a>. Lưu ý: API worklet trong Reanimated 4 / react-native-worklets có thể được đổi tên (ví dụ <code>scheduleOnUI</code>/<code>scheduleOnRN</code>); xem tài liệu phiên bản bạn dùng.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Worklet là gì?
+  <div class="opts"><button>Một loại component</button><button>Hàm JS ngắn có thể chạy trên UI thread</button><button>Một native module</button></div>
+  <div class="exp">Worklet cho phép chạy code animation ở UI thread, không phụ thuộc JS thread.</div></div>
+<div class="q" data-ans="0"><b>2.</b> Cần gọi analytics (hàm thường) từ trong <code>useAnimatedStyle</code> thì dùng?
+  <div class="opts"><button>runOnJS</button><button>runOnUI</button><button>useMemo</button></div>
+  <div class="exp">runOnJS đưa lời gọi từ UI thread về JS thread.</div></div>
+<div class="q" data-ans="2"><b>3.</b> <code>InteractionManager.runAfterInteractions</code> dùng để?
+  <div class="opts"><button>Chạy animation nhanh hơn</button><button>Tăng FPS tối đa</button><button>Hoãn việc nặng đến sau khi tương tác/animation kết thúc</button></div>
+  <div class="exp">Tránh tranh chấp JS thread với animation/cử chỉ.</div></div>
+<div class="chnav"><a href="chuong-8.html"><small>← Chương 8</small>React Compiler</a><a class="next" href="chuong-10.html"><small>Chương 10 →</small>Khác biệt giữa các nền tảng</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

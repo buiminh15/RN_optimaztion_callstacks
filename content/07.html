@@ -1,0 +1,110 @@
+<span class="kicker">Chương 7 · Phần 1: JavaScript · Best practice</span>
+<h1>Concurrent React</h1>
+<p class="lead">Đôi khi không thể làm app chạy nhanh hơn về mặt vật lý — nhưng có thể làm nó <i>cảm thấy</i> nhanh hơn. Concurrent React cho phép tạm dừng, đổi ưu tiên hoặc bỏ qua cập nhật để các tương tác quan trọng (gõ phím, bấm) luôn được ưu tiên.</p>
+
+<h2 id="idea">1. Ý tưởng cốt lõi</h2>
+<p>Quy tắc ngón tay cái cho hiệu năng cảm nhận: <b>phản hồi nhanh + cập nhật trạng thái đều đặn</b> tốt hơn bắt người dùng đợi đến khi xong hết. Đó là tinh thần của Concurrent React.</p>
+<p>Concurrent React ra mắt trong <b>React 18</b>, vào React Native từ <b>0.69</b>. Thay vì xử lý một mạch không ngắt, cập nhật có thể bị tạm dừng, đổi ưu tiên hoặc bỏ. Nó mở ra: <b>interruptible rendering</b>, <b>time-slicing</b>, <b>automatic batching</b>.</p>
+<div class="callout warn"><b class="t">Điều kiện</b><p>Để dùng <code>useTransition</code>, <code>useDeferredValue</code>, automatic batching, Suspense for data fetching trong React Native, bạn phải chuyển sang <b>New Architecture</b> (mặc định từ React Native 0.76).</p></div>
+
+<h2 id="deferred">2. useDeferredValue — cho component nặng</h2>
+<p>Với component render tốn kém (tính toán nặng, thư viện bên thứ ba), dùng <code>useDeferredValue</code> để nó không chặn các tác vụ ưu tiên cao. Hình dung: bạn đang viết ghi chú, bạn bè nhìn qua vai và chen vào bình luận — bạn tạm dừng ghi chú chút. Tương tự React "tạm dừng" render phần ít quan trọng.</p>
+<pre><code><span class="k">function</span> DeferredScreen() {
+  <span class="k">const</span> [count, setCount] = useState(<span class="s">0</span>);
+  <span class="k">const</span> deferredCount = <span class="h">useDeferredValue(count)</span>;
+  <span class="k">return</span> (
+    &lt;&gt;
+      &lt;CounterNumber count={count} /&gt;               <span class="c">{/* cập nhật ngay */}</span>
+      &lt;SlowComponent count={deferredCount} /&gt;       <span class="c">{/* cập nhật sau */}</span>
+      {count !== deferredCount ? &lt;ActivityIndicator /&gt; : <span class="k">null</span>}
+      &lt;Button onPress={() =&gt; setCount(count + 1)} title="Increment" /&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+<div class="callout"><b class="t">Mẹo</b><p>Bọc component nặng nhận giá trị deferred bằng <code>React.memo()</code>, để nó không render lại vì cha re-render.</p></div>
+
+<div class="demo" id="defer">
+  <h4>Demo · Gõ phím khi có component nặng</h4>
+  <p class="d">Danh sách bên dưới cố tình "render" mất ~150 ms mỗi lần (busy-wait thật). Thử gõ nhanh vào ô nhập ở hai chế độ.</p>
+  <div class="row" style="margin-bottom:10px">
+    <button class="btn ghost on" data-d="off">Không defer</button><button class="btn ghost" data-d="on">useDeferredValue</button>
+  </div>
+  <input type="text" class="tin" id="df-in" placeholder="Gõ nhanh vào đây…" autocomplete="off">
+  <div class="grid2" style="margin-top:10px">
+    <div class="card"><div class="muted" style="font-size:13px">Giá trị tức thì (urgent)</div><div id="df-now" class="stat" style="font-family:var(--mono);min-height:1.2em"></div></div>
+    <div class="card" id="df-slowc"><div class="muted" style="font-size:13px">SlowComponent (render 150 ms)</div><div id="df-slow" class="stat" style="font-family:var(--mono);min-height:1.2em"></div><div id="df-st" class="muted" style="font-size:13px"></div></div>
+  </div>
+  <p id="df-fps" class="muted" style="font-size:14px;margin:.6em 0 0"></p>
+</div>
+
+<h3>Hiển thị giá trị cũ trong khi chờ (stale)</h3>
+<p>Khi fetch dữ liệu, thường ta hiện loading và nội dung biến mất rồi hiện lại — gây giật. <code>useDeferredValue</code> + <code>Suspense</code> cho phép giữ <b>giá trị cũ</b> đến khi dữ liệu mới sẵn sàng:</p>
+<pre><code><span class="k">function</span> SearchScreen() {
+  <span class="k">const</span> [query, setQuery] = useState(<span class="s">''</span>);
+  <span class="k">const</span> deferredQuery = useDeferredValue(query);
+  <span class="k">const</span> isStale = query !== deferredQuery;
+  <span class="k">return</span> (
+    &lt;View&gt;
+      &lt;TextInput value={query} onChangeText={setQuery} placeholder="Search items..." /&gt;
+      &lt;Suspense fallback={&lt;LoadingSpinner /&gt;}&gt;
+        &lt;View style={[isStale &amp;&amp; { opacity: <span class="s">0.8</span> }]}&gt;
+          &lt;SearchResults query={deferredQuery} /&gt;
+        &lt;/View&gt;
+      &lt;/Suspense&gt;
+    &lt;/View&gt;
+  );
+}</code></pre>
+<p>Lúc đầu <code>query</code> và <code>deferredQuery</code> bằng nhau. Khi gõ, <code>query</code> cập nhật ngay, <code>deferredQuery</code> giữ giá trị cũ đến khi tìm xong; kết quả mờ đi (opacity 0.8) rồi hiện kết quả mới.</p>
+
+<h2 id="transition">3. useTransition — cho cả một cập nhật</h2>
+<p>Transition đánh dấu các cập nhật <b>không khẩn cấp</b> là ưu tiên thấp. Khác <code>useDeferredValue</code> (hoãn render một giá trị), <code>useTransition</code> hoãn toàn bộ quá trình cập nhật.</p>
+<pre><code><span class="k">function</span> TransitionScreen() {
+  <span class="k">const</span> [count, setCount] = useState(<span class="s">0</span>);
+  <span class="k">const</span> [slowCount, setSlowCount] = useState(<span class="s">0</span>);
+  <span class="k">const</span> [isPending, startTransition] = <span class="h">useTransition()</span>;
+
+  <span class="k">const</span> handleIncrement = () =&gt; {
+    setCount(c =&gt; c + 1);                          <span class="c">// khẩn cấp</span>
+    startTransition(() =&gt; setSlowCount(c =&gt; c + 1)); <span class="c">// ưu tiên thấp</span>
+  };
+  <span class="k">return</span> (
+    &lt;SafeAreaView&gt;
+      &lt;CounterNumber count={count} /&gt;
+      &lt;SlowComponent count={slowCount} /&gt;
+      {isPending ? &lt;LoadingSpinner /&gt; : <span class="k">null</span>}
+      &lt;Button onPress={handleIncrement} title="Increment" /&gt;
+    &lt;/SafeAreaView&gt;
+  );
+}</code></pre>
+<h3>Chọn cái nào?</h3>
+<table class="cmp"><tr><th></th><th>useDeferredValue</th><th>useTransition</th></tr>
+<tr><td>Phạm vi</td><td>Một giá trị/prop</td><td>Nhiều state, cả vùng UI</td></tr>
+<tr><td>Cách dùng</td><td>Bọc giá trị nhận vào</td><td>Bọc lệnh setState trong <code>startTransition</code></td></tr>
+<tr><td>Tình huống</td><td>Input gõ nhanh → component nặng</td><td>Chuyển view, cập nhật phần lớn UI</td></tr></table>
+<p class="muted">Lưu ý: chuyển màn hình trong RN thường do navigation native (ví dụ React Navigation native stack) xử lý; chỉ navigator dựa trên JS mới hưởng lợi từ kỹ thuật này.</p>
+
+<h2 id="batching">4. Automatic batching</h2>
+<p>React 18 gộp nhiều cập nhật state vào <b>một lần re-render</b>. Trước đây chỉ gộp trong event handler của React; trong <code>Promise</code>, <code>setTimeout</code>, native event… thì không.</p>
+<pre><code>setTimeout(() =&gt; {
+  setProductQuantity(q =&gt; q + 1);
+  setIsCartOpen(o =&gt; !o);
+  <span class="c">// React 17: render 2 lần · React 18: render 1 lần (batching)</span>
+}, 1000);</code></pre>
+<p>Batching cũng tránh trạng thái "dở dang" (mới cập nhật một nửa state) gây glitch hình ảnh.</p>
+<div class="demo" id="batch">
+  <h4>Demo · Batching</h4>
+  <div class="row"><button class="btn ghost" id="b-off">setTimeout – không batching (cũ)</button><button class="btn" id="b-on">setTimeout – batching (React 18)</button></div>
+  <div class="grid2" style="margin-top:10px"><div class="card"><div class="muted" style="font-size:13px">Số lần render</div><div class="stat" id="b-r">0</div></div><div class="card"><div class="muted" style="font-size:13px">Trạng thái UI từng thấy</div><div id="b-s" style="font-family:var(--mono);font-size:14px"></div></div></div>
+</div>
+<p class="src">Bổ sung: <a href="https://react.dev/reference/react/useDeferredValue" target="_blank" rel="noopener">useDeferredValue</a> · <a href="https://react.dev/reference/react/useTransition" target="_blank" rel="noopener">useTransition</a> · <a href="https://react.dev/blog/2022/03/29/react-v18#new-feature-automatic-batching" target="_blank" rel="noopener">Automatic batching</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="2"><b>1.</b> Điều kiện để dùng useTransition/useDeferredValue trong React Native?
+  <div class="opts"><button>Bật Hermes debug</button><button>Dùng Expo</button><button>Chạy New Architecture</button></div>
+  <div class="exp">Các tính năng concurrent cần New Architecture (mặc định từ RN 0.76).</div></div>
+<div class="q" data-ans="0"><b>2.</b> Muốn hoãn render của một component nặng phụ thuộc giá trị gõ phím, nên dùng?
+  <div class="opts"><button>useDeferredValue</button><button>useLayoutEffect</button><button>useRef</button></div>
+  <div class="exp">Một giá trị → useDeferredValue.</div></div>
+<div class="q" data-ans="1"><b>3.</b> Automatic batching trong React 18 nghĩa là?
+  <div class="opts"><button>Mọi setState đều bị trì hoãn 1 giây</button><button>Nhiều setState (kể cả trong setTimeout/Promise) gộp thành một lần render</button><button>State được lưu vào đĩa</button></div>
+  <div class="exp">Giảm render thừa và tránh state dở dang.</div></div>

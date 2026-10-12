@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 4 – Uncontrolled Components</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html" selected>4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#escape">Lối thoát hiểm của React</a><a href="#controlled">TextInput controlled trong kiến trúc cũ</a><a href="#repro">Tái hiện lỗi "gõ TEST ra TET"</a><a href="#fix">Giải pháp: bỏ prop value</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 4 · Phần 1: JavaScript · Best practice</span>
+<h1>Uncontrolled Components</h1>
+<p class="lead">React "vẽ lại cả cây" mỗi khi state đổi — một abstraction tiện lợi nhưng không miễn phí. Khi cần, ta có thể "thoát" khỏi nó bằng ref. Ví dụ điển hình: <code>TextInput</code>.</p>
+
+<h2 id="escape">1. Lối thoát hiểm của React</h2>
+<p>Mọi abstraction đều đơn giản hóa thực tế và đánh đổi bằng độ chính xác, nên tốt nhất là có "lối thoát". React có <b>refs</b>, cho phép bỏ qua logic re-render. Component không bị điều khiển bởi state gọi là <b>uncontrolled component</b>.</p>
+
+<h2 id="controlled">2. TextInput controlled trong kiến trúc cũ</h2>
+<pre><code><span class="k">const</span> DummyTextInput = () =&gt; {
+  <span class="k">const</span> [value, setValue] = useState(<span class="s">"Text"</span>);
+  <span class="k">const</span> onChangeText = (text) =&gt; setValue(text);
+  <span class="k">return</span> &lt;TextInput onChangeText={onChangeText} <span class="h">value={value}</span> /&gt;;
+};</code></pre>
+<p>Mỗi ký tự gõ vào: native → <code>onChangeText</code> (thao tác 1) → React <code>setState</code> → đồng bộ lại giá trị xuống native (thao tác 2). Lợi ích: React là <b>nguồn sự thật duy nhất</b>, bạn có thể validate, che (mask) hay biến đổi input ngay khi gõ.</p>
+<p>Nhược điểm lộ ra khi tài nguyên hạn chế (máy Android yếu, JS đang tính toán nặng) và người dùng gõ nhanh: các cập nhật đến <b>không đúng thứ tự</b>. Trong kiến trúc async cũ, state React có thể lệch với native.</p>
+<div class="callout"><b class="t">New Architecture</b><p>Vấn đề mất đồng bộ của controlled TextInput <b>không nên còn</b> trong New Architecture. Kiến thức này vẫn hữu ích cho app cũ và để hiểu cơ chế.</p></div>
+
+<h2 id="repro">3. Tái hiện lỗi "gõ TEST ra TET"</h2>
+<p>Người dùng gõ nhanh T-E-S-T trong khi JS bận. Hãy bấm "Bước tiếp" để đi qua từng thao tác như sách mô tả:</p>
+<div class="demo" id="race">
+  <h4>Demo · Đua đồng bộ giữa native và JS</h4>
+  <div class="row"><button class="btn" id="race-n">Bước tiếp ▶</button><button class="btn ghost" id="race-r">Làm lại</button></div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><div class="muted" style="font-size:13px">Ô nhập native (người dùng thấy)</div><div class="stat" id="race-v" style="font-family:var(--mono)">&nbsp;</div></div>
+    <div class="card"><div class="muted" style="font-size:13px">Thao tác</div><div id="race-d" style="font-size:15px">Nhấn "Bước tiếp".</div></div>
+  </div>
+  <div class="log" id="race-l" style="margin-top:10px;max-height:200px"></div>
+</div>
+<p>Nguyên nhân gốc là <b>thứ tự thao tác</b>: mọi thứ sẽ ổn nếu thao tác 5 chạy trước thao tác 4. Giá trị người dùng thấy bị "quay ngược" từ <code>TES</code> về <code>TE</code>; trong lúc đó họ gõ thêm nên kết quả cuối thành <code>TET</code> — không phải điều họ định gõ.</p>
+
+<h2 id="fix">4. Giải pháp: bỏ prop <code>value</code></h2>
+<pre><code>&lt;TextInput
+  onChangeText={onChangeText}
+<span style="color:#f87171">-  value={value}</span>
+/&gt;</code></pre>
+<p>Dữ liệu giờ chỉ đi <b>một chiều</b>: từ native (<code>RCTSinglelineTextInputView</code> trên iOS, <code>AndroidTextInputNativeComponent</code> trên Android) lên JS. Native tự giữ state nội bộ của ô nhập nên không còn đồng bộ ngược → hết nhấp nháy.</p>
+<table class="cmp"><tr><th></th><th>Controlled</th><th>Uncontrolled</th></tr>
+<tr><td>Nguồn sự thật</td><td>State React</td><td>Native input</td></tr>
+<tr><td>Validate/mask khi gõ</td><td>Dễ</td><td>Khó hơn (dùng ref hoặc xử lý khi submit)</td></tr>
+<tr><td>Rủi ro lệch khi gõ nhanh</td><td>Có (kiến trúc cũ)</td><td>Không</td></tr>
+<tr><td>Chi phí re-render</td><td>Mỗi ký tự</td><td>Chỉ khi bạn tự setState</td></tr></table>
+<div class="callout warn"><b class="t">Đừng quên</b><p>Ngay cả khi bỏ <code>value</code>, nếu bạn vẫn <code>setValue</code> mỗi ký tự thì component cha vẫn re-render. Với form lớn, cân nhắc chỉ đọc giá trị qua ref khi submit.</p></div>
+<p class="src">Bổ sung: <a href="https://react.dev/learn/manipulating-the-dom-with-refs" target="_blank" rel="noopener">React – Manipulating the DOM with Refs</a> · <a href="https://reactnative.dev/docs/textinput" target="_blank" rel="noopener">React Native – TextInput</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="0"><b>1.</b> Uncontrolled TextInput khác controlled ở điểm nào?
+  <div class="opts"><button>Không truyền prop <code>value</code>; native tự giữ giá trị</button><button>Luôn dùng useReducer</button><button>Chạy trên luồng riêng</button></div>
+  <div class="exp">Bỏ <code>value</code> → dữ liệu chỉ chảy native → JS.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Nguyên nhân gốc của lỗi "TES → TE → TET"?
+  <div class="opts"><button>Bàn phím lỗi</button><button>Hermes cắt chuỗi</button><button>Các cập nhật đồng bộ ngược đến sai thứ tự khi JS bận</button></div>
+  <div class="exp">Cập nhật cũ ghi đè giá trị mới hơn trong lúc người dùng vẫn đang gõ.</div></div>
+<div class="q" data-ans="1"><b>3.</b> Lợi ích chính của controlled input?
+  <div class="opts"><button>Nhanh hơn</button><button>Có thể validate/mask/biến đổi input ngay khi gõ</button><button>Tốn ít RAM hơn</button></div>
+  <div class="exp">React là nguồn sự thật duy nhất nên có toàn quyền với giá trị.</div></div>
+<div class="chnav"><a href="chuong-3.html"><small>← Chương 3</small>Săn memory leak trong JS</a><a class="next" href="chuong-5.html"><small>Chương 5 →</small>Component chuyên dụng bậc cao</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

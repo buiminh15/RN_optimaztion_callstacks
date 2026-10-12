@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 28 – Thư viện và công cụ</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html" selected>28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#how">Cách dùng bảng này</a><a href="#timeline">Quy trình tối ưu gợi ý (tóm tắt cả sách)</a></aside><article><span class="kicker">Phụ lục</span>
+<h1>Thư viện và công cụ được nhắc trong sách</h1>
+<p class="lead">Bảng tra nhanh gom mọi công cụ xuất hiện trong cuốn sách, nhóm theo mục đích. Gõ vào ô tìm kiếm để lọc.</p>
+
+<div class="demo">
+  <input type="text" class="tin" id="ref-q" placeholder="Tìm công cụ… (ví dụ: bundle, memory, list)" autocomplete="off">
+  <div id="ref-l" style="margin-top:12px"></div>
+</div>
+<h2 id="how">Cách dùng bảng này</h2>
+<p>Mỗi dòng có tên công cụ, mô tả ngắn và chương liên quan. Bấm số chương để nhảy tới nội dung chi tiết.</p>
+
+<h2 id="timeline">Quy trình tối ưu gợi ý (tóm tắt cả sách)</h2>
+<ol class="steps">
+  <li><b>Xác định vấn đề bằng số liệu:</b> TTI và FPS (<a href="chuong-1.html">Ch.1</a>, <a href="chuong-2.html">Ch.2</a>, <a href="chuong-12.html">Ch.12</a>).</li>
+  <li><b>Phía JS trước:</b> profile React/JS, giảm re-render, dùng list chuyên dụng, animation trên UI thread (<a href="chuong-2.html">Ch.2</a>–<a href="chuong-9.html">9</a>).</li>
+  <li><b>Phía native:</b> profile bằng Instruments/Android Studio, hiểu luồng, bộ nhớ, flattening, SDK native (<a href="chuong-10.html">Ch.10</a>–<a href="chuong-18.html">18</a>).</li>
+  <li><b>Build time:</b> giảm bundle JS/app, bỏ barrel, tree shaking, R8, assets native, tắt nén bundle (<a href="chuong-19.html">Ch.19</a>–<a href="chuong-27.html">27</a>).</li>
+  <li><b>Đo lại.</b> Luôn đo trước và sau; đo ở bản không-dev, thiết bị yếu nhất, cold start.</li>
+</ol>
+<div class="callout"><b class="t">Tinh thần của cả cuốn sách</b><p>Đừng tối ưu mù. Dữ liệu từ profiler quyết định bạn nên sửa gì; và mỗi thay đổi đều phải được kiểm chứng bằng số đo.</p></div>
+<p class="src">Nội dung phụ lục dịch/tóm tắt từ mục "Libraries and Tools Mentioned in This Guide" (tr. 179–181) và phần "About the authors" của sách do đội ngũ Callstack biên soạn.</p>
+<div class="chnav"><a href="chuong-27.html"><small>← Chương 27</small>Tắt nén JS bundle</a><a class="next" href="index.html"><small>Hết</small>Về mục lục</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

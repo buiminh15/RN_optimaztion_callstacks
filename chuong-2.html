@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 2 – JavaScript & React: profile và đo FPS</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html" selected>2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#threads">React Native chạy JS ở đâu?</a><a href="#rerender">Mô hình re-render của React</a><a href="#profile-react">Profile React bằng React Native DevTools</a><a href="#memo">Sửa thủ công bằng memo + useCallback</a><a href="#profile-js">Profile code JavaScript (CPU)</a><a href="#fps">Đo FPS</a><a href="#flashlight">Flashlight — đo FPS trung bình (Android)</a><a href="#summary">Tóm tắt chương</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 2 · Phần 1: JavaScript</span>
+  <h1>JavaScript &amp; React: cách profile và đo FPS</h1>
+  <p class="lead">Mục tiêu của phần này: cải thiện FPS bằng cách tối ưu phía JS/React. Trước khi tối ưu, bạn phải học cách <b>đo</b> — đây là kỹ năng dùng ở mọi app.</p>
+
+  <h2 id="threads">1. React Native chạy JS ở đâu?</h2>
+  <p>App React Native là một app native "có thêm" một chút: một phần code native chạy lên là của React Native. Ghép lại gồm Kotlin/Java (Android), Swift/Objective-C (iOS), C++ (lõi runtime) và JavaScript chạy bởi engine <b>Hermes</b>.</p>
+  <p>Khi khởi động (New Architecture), React Native lo ba việc:</p>
+  <div class="demo">
+    <h4>Sơ đồ · Các luồng chính</h4>
+    <div class="diag">
+      <div class="lane2"><span>Main (UI) thread</span><div class="box a">Khởi tạo lõi RN: React renderer (C++), <b>JSI</b>, engine Hermes, layout Yoga → vẽ UI native</div></div>
+      <div class="arrow">⇅ giao tiếp qua JSI</div>
+      <div class="lane2"><span>JS thread</span><div class="box a">Chạy JavaScript: logic nghiệp vụ, React render, state</div></div>
+      <div class="lane2"><span>Native modules thread</span><div class="box">Chạy các TurboModule được nạp lười (lazy)</div></div>
+    </div>
+    <p class="muted" style="font-size:15px;margin-bottom:0">Điểm mấu chốt: <b>logic</b> (JS thread) và <b>vẽ</b> (main thread) chạy ở hai luồng tách biệt.</p>
+  </div>
+  <div class="callout"><b class="t">Vì sao tập trung vào JS trước?</b>
+    <p>Khảo sát nội bộ 100 lập trình viên React Native của Callstack: <b>80%</b> vấn đề hiệu năng đến từ phía JavaScript. Mẫu nhỏ nên chưa đại diện, nhưng đủ gợi ý: hãy xử lý JS trước khi sang tối ưu native ở Phần 2.</p></div>
+
+  <h2 id="rerender">2. Mô hình re-render của React</h2>
+  <p>Thư viện <code>react</code> rất nhỏ: chủ yếu là API, vài tính năng chung và thuật toán <b>reconciliation</b> — quyết định <i>"cần làm gì"</i> (what). Còn <i>"làm thế nào"</i> (how) giao cho <b>renderer</b>: <code>react-dom</code> (web), <code>react-native</code> (iOS/Android), <code>react-native-windows</code>…</p>
+  <p>React so sánh phần bạn thay đổi và chỉ áp dụng số cập nhật tối thiểu cần thiết. Một component re-render khi:</p>
+  <div class="cards">
+    <div class="card"><b>① Cha re-render</b><br><span class="muted">kéo theo mọi con (kể cả khi props không đổi)</span></div>
+    <div class="card"><b>② State đổi</b><br><span class="muted">gồm cả state từ hooks</span></div>
+    <div class="card"><b>③ Props đổi</b></div>
+    <div class="card"><b>④ Context đổi</b></div>
+    <div class="card"><b>⑤ Force update</b><br><span class="muted">lối thoát hiểm</span></div>
+  </div>
+  <div class="callout warn"><b class="t">Dễ nhầm</b><p>Nguyên nhân ① là thủ phạm hay gặp nhất: re-render <b>không</b> có nghĩa là props đổi. Ta sẽ thấy ngay trong ví dụ dưới.</p></div>
+  <p class="src">Bổ sung: <a href="https://react.dev/learn/render-and-commit" target="_blank" rel="noopener">React docs – Render and Commit</a> giải thích 3 bước trigger → render → commit mà Profiler hiển thị thành các "commit".</p>
+
+  <h2 id="profile-react">3. Profile React bằng React Native DevTools</h2>
+  <p>Profiling là phân tích chương trình để tạo "hồ sơ" thực thi: phần nào tốn CPU/bộ nhớ nhất. Lý do: app quá phức tạp để đoán, và các tối ưu "mù" thường ít tác dụng. <b>Quyết định phải dựa trên dữ liệu.</b></p>
+
+  <h3>Ví dụ sẽ profile</h3>
+<pre><code><span class="k">export const</span> App = () =&gt; {
+  <span class="k">const</span> [count, setCount]   = React.useState(<span class="s">0</span>);
+  <span class="k">const</span> [second, setSecond] = React.useState(<span class="s">0</span>);
+  <span class="k">return</span> (
+    &lt;View style={styles.container}&gt;
+      &lt;Text&gt;Welcome!&lt;/Text&gt;
+      &lt;Text&gt;{count}&lt;/Text&gt;
+      &lt;Text&gt;{second}&lt;/Text&gt;
+      &lt;Button onPress={() =&gt; setCount(count + 1)}  title="Press one" /&gt;
+      &lt;Button onPress={() =&gt; setSecond(second + 1)} title="Press two" /&gt;
+    &lt;/View&gt;
+  );
+};
+
+<span class="k">const</span> Button = ({ onPress, title }) =&gt; (
+  &lt;Pressable style={styles.button} onPress={onPress}&gt;
+    &lt;Text&gt;{title}&lt;/Text&gt;
+  &lt;/Pressable&gt;
+);</code></pre>
+
+  <h3>Các bước</h3>
+  <ol class="steps">
+    <li><b>Mở React Native DevTools.</b> Nhấn <code>j</code> trong terminal Metro, hoặc mở Dev Menu (lắc máy · <code>Cmd+M</code> Android · <code>Cmd+D</code> iOS) → "Open DevTools".</li>
+    <li><b>Chuyển sang tab Profiler</b> (plugin React Profiler tích hợp sẵn).</li>
+    <li><b>Bấm biểu tượng bánh răng</b>, bật <i>"Highlight updates when components render"</i> và <i>"Record why each component rendered while profiling"</i>.</li>
+    <li><b>Bấm "Start profiling".</b> (Khi profile lúc khởi động app, dùng <i>"Reload and start profiling"</i>.)</li>
+    <li><b>Tương tác:</b> bấm "Press one" 2 lần rồi "Press two" 2 lần → 4 <i>commit</i>.</li>
+    <li><b>Dừng và đọc kết quả</b> ở Flame graph và Ranked.</li>
+  </ol>
+
+  <h3>Thử mô phỏng: ai re-render khi bấm nút?</h3>
+  <p>Demo dưới mô phỏng đúng ví dụ của sách. Bấm nút rồi nhìn bộ đếm render ở từng component (cam = có render, xanh = bị bỏ qua).</p>
+  <div class="demo" id="rr">
+    <h4>Demo · Re-render simulator</h4>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn" id="rr-1">Press one</button><button class="btn" id="rr-2">Press two</button>
+      <label style="margin-left:auto;cursor:pointer"><input type="checkbox" id="rr-opt"> Bật <code>memo</code> + <code>useCallback</code></label>
+      <button class="btn ghost" id="rr-reset">Reset</button>
+    </div>
+    <div class="grid2">
+      <div class="tree">
+        <div class="node" data-n="app"><span class="cnt">0</span><span class="nm">&lt;App&gt;</span> state: count, second
+          <div class="node" data-n="t1"><span class="cnt">0</span>&lt;Text&gt; = <b class="v">0</b></div>
+          <div class="node" data-n="t2"><span class="cnt">0</span>&lt;Text&gt; = <b class="v">0</b></div>
+          <div class="node" data-n="b1"><span class="cnt">0</span>&lt;Button&gt; "Press one"</div>
+          <div class="node" data-n="b2"><span class="cnt">0</span>&lt;Button&gt; "Press two"</div>
+        </div>
+      </div>
+      <div>
+        <div class="muted" style="font-size:13px;margin-bottom:4px">Nhật ký commit</div>
+        <div class="log"></div>
+      </div>
+    </div>
+  </div>
+  <p>Khi chưa tối ưu, cả hai Button render ở <b>mọi</b> commit dù props không hề liên quan — vì cha <code>App</code> re-render (nguyên nhân ① ở trên). Trong Profiler bạn sẽ thấy hai component Button mỗi commit.</p>
+
+  <h3>Cách đọc Profiler</h3>
+  <div class="cards">
+    <div class="card"><span class="pill">Flame graph</span><p>Cây component theo thời gian render. Bấm vào thanh xanh (ví dụ <code>View</code>) để "zoom" vào con. Thanh <b>vàng</b> = tốn thời gian nhất.</p></div>
+    <div class="card"><span class="pill">Ranked</span><p>Xếp component từ chậm (vàng) đến nhanh (xanh) — giống "Bottom-up" ở các profiler khác.</p></div>
+    <div class="card"><span class="pill">Why did this render?</span><p>Cho biết lý do render (props đổi, state đổi, cha render…). Đây là thông tin quý nhất.</p></div>
+  </div>
+
+  <h2 id="memo">4. Sửa thủ công bằng <code>memo</code> + <code>useCallback</code></h2>
+<pre><code><span class="c">// bọc hàm inline bằng useCallback</span>
+<span class="k">const</span> onPressHandler = useCallback(() =&gt; setCount(count + 1),  [count]);
+<span class="k">const</span> secondHandler  = useCallback(() =&gt; setSecond(second + 1), [second]);
+
+&lt;Button onPress={onPressHandler} title="Press one" /&gt;
+&lt;Button onPress={secondHandler}  title="Press two" /&gt;
+
+<span class="c">// bọc component bằng memo</span>
+<span class="k">const</span> Button = <span class="h">memo</span>(({ onPress, title }) =&gt; {
+  <span class="c">// ...</span>
+});</code></pre>
+  <p>Vì sao cần <b>cả hai</b>? <code>memo</code> so sánh props nông; nếu <code>onPress</code> là hàm inline mới mỗi lần render thì props luôn "khác" và <code>memo</code> vô tác dụng. <code>useCallback</code> giữ hàm ổn định giữa các lần render. Hãy tick ô "memo + useCallback" ở demo trên rồi bấm lại: chỉ nút vừa bấm re-render (vì <code>count</code> nằm trong deps của handler đó).</p>
+  <div class="callout"><b class="t">Nếu dùng React Compiler</b>
+    <p>Đoạn code gốc sẽ được tự động memoize (sách ghi nhận tên tự sinh như <code>_c2</code> trong Profiler), nên ít re-render hơn mà không cần viết tay. Sẽ được bàn ở chương React Compiler.</p></div>
+  <div class="callout warn"><b class="t">Quy tắc thực hành</b>
+    <p>Tập trung vào component màu <b>vàng</b> (tốn thời gian) và dùng "Why did this render?". Với app thật, flame graph sẽ rối hơn nhiều so với ví dụ — hãy thử ngay trên app của bạn.</p></div>
+  <p class="src">Bổ sung: <a href="https://reactnative.dev/docs/react-native-devtools" target="_blank" rel="noopener">React Native DevTools (docs chính thức)</a> · <a href="https://react.dev/reference/react/memo" target="_blank" rel="noopener">React docs – memo</a>.</p>
+
+  <h2 id="profile-js">5. Profile code JavaScript (CPU)</h2>
+  <p>DevTools của React Native dựa trên Chrome DevTools nên cũng profile được CPU của JS thông thường. Dùng tab <b>JavaScript Profiler</b>.</p>
+  <div class="callout"><b class="t">Không thấy tab?</b><p>Bấm bánh răng góc phải → mục <i>Experiments</i> → bật <i>JavaScript Profiler</i>.</p></div>
+  <p>Chọn kiểu xem ở góc trái: <b>Chart</b> (flame chart), <b>Heavy (Bottom-Up)</b> (sắp theo hàm chạy lâu nhất) hoặc <b>Tree</b>. Thử với hàm chạy rất lâu:</p>
+<pre><code><span class="k">const</span> longRunningFunction = () =&gt; {
+  <span class="k">let</span> i = <span class="s">0</span>;
+  <span class="k">while</span> (i &lt; <span class="s">1000000000</span>) { i++; }
+};</code></pre>
+  <p>Bắt đầu ghi, chạy hàm, dừng ghi. Kết quả: hàm chạy hơn <b>12 giây</b> — suốt thời gian đó phần JS của app đứng im, nhưng UI native vẫn phản hồi nhờ mô hình luồng của React Native.</p>
+
+  <div class="demo" id="flame">
+    <h4>Demo · Flame chart (bấm vào từng thanh)</h4>
+    <p class="d">Mô phỏng profile ở trên. Mỗi hàng là một tầng của call stack; chiều rộng là thời gian.</p>
+    <div class="flame">
+      <div class="fr"><button class="fb gr" data-i="root" style="width:100%">(root) — 12 s</button></div>
+      <div class="fr"><button class="fb y" data-i="ev" style="width:96%">onPress → handler</button><button class="fb gr" data-i="idle" style="width:4%"></button></div>
+      <div class="fr"><button class="fb r" data-i="long" style="width:95%">longRunningFunction  ← self time cao</button></div>
+    </div>
+    <div class="ftip">Bấm vào một thanh để xem ý nghĩa.</div>
+  </div>
+
+  <div class="callout bad"><b class="t">Quy tắc 16 ms</b>
+    <p>Muốn đạt 60 FPS, không hàm nào nên chặn JS thread quá <b>16 ms</b>; với 120 FPS là <b>~8 ms</b>. Dùng thanh trượt để cảm nhận:</p></div>
+
+  <div class="demo" id="thr">
+    <h4>Demo · Một tác vụ chặn JS thread bao lâu thì rớt khung hình?</h4>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn ghost on" data-hz="60">60 Hz</button><button class="btn ghost" data-hz="120">120 Hz</button>
+      <span class="muted" style="margin-left:8px">Thời gian tác vụ:</span><input type="range" id="thr-ms" min="1" max="200" value="40" style="flex:1;min-width:140px"><b id="thr-v"></b>
+    </div>
+    <div class="lane"><b>JS thread — mỗi vạch = một khung hình</b>
+      <div class="tl"><div class="job"></div><span class="lbl">0 → 200 ms</span></div></div>
+    <div class="lane"><b>Khung hình trong 200 ms (đỏ = bị bỏ lỡ)</b><div class="dots"></div></div>
+    <div id="thr-verdict" style="margin-top:8px"></div>
+    <p class="muted" style="font-size:13px;margin-bottom:0">Đơn giản hóa: mỗi khung cần JS xử lý xong trong ngân sách để cập nhật UI kịp thời.</p>
+  </div>
+
+  <h2 id="fps">6. Đo FPS</h2>
+  <p>Nếu app bị khựng, lag khi nhập liệu hoặc "giật" — UI đang <b>rớt khung hình</b>. Một khung hình là một lần vẽ lên màn hình; màn 60 Hz vẽ 60 khung/giây. Ngân sách: <b>16,6 ms</b> ở 60 Hz, hướng tới <b>8,3 ms</b> ở 120 Hz (xem demo ở <a href="chuong-1.html#fps">Chương 1</a>).</p>
+
+  <h3>Perf Monitor có sẵn</h3>
+  <p>Mở Dev Menu rồi chọn <b>Show Perf Monitor</b>. Một bảng nhỏ hiện ở góc trên-trái với <b>hai</b> chỉ số FPS: <b>UI (Main) thread</b> và <b>JS thread</b> — nhờ đó bạn biết ngay chậm do JavaScript hay do native.</p>
+  <div class="cards">
+    <div class="card"><b>Mở Dev Menu</b><p class="muted" style="margin:.3em 0 0">iOS Simulator: <code>Ctrl+Cmd+Z</code> (hoặc Device → Shake) · Android emulator: <code>Cmd/Ctrl+M</code> · máy thật: lắc.</p></div>
+    <div class="card"><b>Đọc kết quả</b><p class="muted" style="margin:.3em 0 0">JS FPS tụt, UI FPS ổn → vấn đề ở JS. UI FPS tụt → xem Phần 2 (Native).</p></div>
+  </div>
+  <div class="callout warn"><b class="t">Luôn tắt dev mode khi đo hiệu năng</b>
+    <p>Android: Dev Menu → Settings → <i>JS Dev Mode</i>. iOS: chạy Metro ở chế độ không phải dev (ví dụ release build). Dev mode làm số đo thấp hơn thực tế rất nhiều.</p></div>
+  <p>Khi FPS tụt lúc animation/tác vụ nào đó, dùng profiler ở mục 3–5 để thu hẹp nguyên nhân.</p>
+
+  <h2 id="flashlight">7. Flashlight — đo FPS trung bình (Android)</h2>
+  <p>FPS trong Dev Menu dễ nhìn nhưng khó <i>lưu và so sánh</i>. <b>Flashlight</b> cho báo cáo kiểu Lighthouse (chỉ Android):</p>
+<pre><code><span class="c"># mở app trên emulator Android, rồi:</span>
+&gt; flashlight measure</code></pre>
+  <ul>
+    <li>Biểu đồ các chỉ số hiện theo thời gian thực khi bạn thao tác.</li>
+    <li>Báo cáo gồm <b>điểm hiệu năng tổng</b>, FPS trung bình, CPU, RAM.</li>
+    <li>Kết quả lưu ra file <b>JSON</b> → so sánh giữa các phiên bản code, dùng cho giám sát tự động để chứng minh FPS thật sự cải thiện.</li>
+  </ul>
+  <p class="src">Bổ sung: <a href="https://github.com/bamlab/android-performance-profiler" target="_blank" rel="noopener">Flashlight trên GitHub (BAM)</a> · <a href="https://reactnative.dev/docs/performance" target="_blank" rel="noopener">React Native – Performance Overview</a>.</p>
+
+  <h2 id="summary">Tóm tắt chương</h2>
+  <div class="cards">
+    <div class="card"><b>Đo trước, tối ưu sau</b><p class="muted" style="margin:.3em 0 0">Quyết định dựa trên dữ liệu profile.</p></div>
+    <div class="card"><b>Re-render ≠ props đổi</b><p class="muted" style="margin:.3em 0 0">Cha render là đủ để con render; dùng <code>memo</code> + <code>useCallback</code> (hoặc React Compiler).</p></div>
+    <div class="card"><b>Giữ JS thread &lt; 16 ms/tác vụ</b><p class="muted" style="margin:.3em 0 0">8 ms nếu nhắm 120 FPS.</p></div>
+    <div class="card"><b>Đo ở bản không-dev</b><p class="muted" style="margin:.3em 0 0">Perf Monitor để xem nhanh, Flashlight để so sánh.</p></div>
+  </div>
+
+  <h2 id="quiz">Kiểm tra nhanh</h2>
+  <div class="q" data-ans="2"><b>1.</b> Component <code>Button</code> render lại dù props không đổi. Nguyên nhân phổ biến nhất?
+    <div class="opts"><button>Context đổi</button><button>Hermes lỗi</button><button>Component cha re-render</button></div>
+    <div class="exp">Cha re-render kéo theo mọi con trừ khi con được <code>memo</code>.</div></div>
+  <div class="q" data-ans="1"><b>2.</b> Bọc <code>Button</code> bằng <code>memo</code> nhưng vẫn truyền <code>onPress={() =&gt; …}</code> inline. Kết quả?
+    <div class="opts"><button>Button không bao giờ render</button><button>memo gần như vô tác dụng vì hàm mới mỗi lần</button><button>Lỗi biên dịch</button></div>
+    <div class="exp">Hàm inline là tham chiếu mới mỗi lần nên so sánh props luôn thấy "khác". Cần <code>useCallback</code>.</div></div>
+  <div class="q" data-ans="0"><b>3.</b> Perf Monitor hiện FPS của hai luồng nào?
+    <div class="opts"><button>UI (Main) và JS</button><button>JS và Native modules</button><button>Hermes và Yoga</button></div>
+    <div class="exp">Nhờ vậy bạn phân biệt được chậm do JS hay do native.</div></div>
+  <div class="q" data-ans="1"><b>4.</b> Hàm chặn JS thread 50 ms ở 60 Hz làm rớt khoảng bao nhiêu khung?
+    <div class="opts"><button>0</button><button>~2–3</button><button>~10</button></div>
+    <div class="exp">50 / 16,7 ≈ 3 khung — bỏ lỡ khoảng 2–3 khung.</div></div>
+  <div class="q" data-ans="2"><b>5.</b> Công cụ nào lưu kết quả FPS ra JSON để so sánh giữa các phiên bản (Android)?
+    <div class="opts"><button>Perf Monitor</button><button>React Profiler</button><button>Flashlight</button></div>
+    <div class="exp">Flashlight xuất báo cáo JSON gồm FPS, CPU, RAM và điểm tổng.</div></div>
+<div class="chnav"><a href="chuong-1.html"><small>← Chương 1</small>Vì sao hiệu năng quan trọng?</a><a class="next" href="chuong-3.html"><small>Chương 3 →</small>Săn memory leak trong JS</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

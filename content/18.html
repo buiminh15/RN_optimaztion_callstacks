@@ -1,0 +1,68 @@
+<span class="kicker">Chương 18 · Phần 2: Native · Guide</span>
+<h1>Săn memory leak native</h1>
+<p class="lead">Khó phát hiện leak nếu không có công cụ chuyên dụng. May mắn là cả iOS và Android đều có công cụ tốt, tương tự profiler bộ nhớ JS ở <a href="chuong-3.html">Chương 3</a>.</p>
+
+<div class="demo" data-tabs>
+  <h4>Hai nền tảng · Hai quy trình</h4>
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost" data-t="ios">iOS · Xcode</button><button class="btn ghost" data-t="and">Android · Android Studio</button></div>
+
+  <div data-p="ios">
+    <h3 style="margin-top:.2em">Bước 1 — Memory Report (nhanh)</h3>
+    <p>Build app trong Xcode, khi chạy mở <b>Debug Navigator</b> (panel bên) → <b>Memory Report</b>: đồ thị bộ nhớ app dùng. Nên dùng trên <b>bản release</b>. Đồ thị giúp phát hiện nhanh bộ nhớ tăng mãi, nhưng muốn biết <i>nguồn</i> leak cần Instruments.</p>
+    <h3>Bước 2 — Instruments → Leaks</h3>
+    <ol class="steps">
+      <li>Menu <b>Product → Profile</b>.</li>
+      <li>Sau khi build xong, chọn template <b>Leaks</b> → <b>Choose</b>.</li>
+      <li>Bấm nút ghi (góc trên trái), trên thiết bị thực hiện các bước nghi gây leak (điều hướng sang màn hình có native code, bấm nút…).</li>
+      <li>Leaks hiện <b>dấu đỏ</b> khi phát hiện leak. Bấm vào để xem tóm tắt object bị leak, <b>thư viện</b> và <b>frame</b> chịu trách nhiệm; bên phải là <b>stack trace</b> chỉ đúng hàm.</li>
+      <li>Bấm đúp tên hàm → Xcode mở mã nguồn.</li>
+    </ol>
+    <div class="callout"><b class="t">Ví dụ của sách</b><p>Hàm C++ <code>createNewStrings()</code> cấp phát chuỗi trên heap nhưng quên <code>delete</code> (đúng lỗi ở <a href="chuong-13.html#leaks">Chương 13</a>). Thêm <code>delete</code> rồi chạy lại → Leaks không còn báo gì.</p></div>
+  </div>
+
+  <div data-p="and">
+    <h3 style="margin-top:.2em">Bước 1 — Track memory consumption</h3>
+    <p>Build bản release, mở tab <b>Profiler</b> ở góc dưới trái → chọn <b>Track memory consumption</b> để xem đồ thị bộ nhớ.</p>
+    <h3>Bước 2 — Một leak "thực tế" hơn: Activity bị giữ</h3>
+    <p>Mặc định Android <b>tạo lại</b> <code>MainActivity</code> khi cấu hình đổi (xoay màn hình, đổi dark mode…). React Native tắt hành vi này bằng <code>android:configChanges</code> trong manifest, nhưng app native thì thường gặp. Cộng thêm một <b>singleton</b> toàn cục dùng listener pattern → công thức hoàn hảo cho leak.</p>
+<pre><code><span class="k">object</span> EventManager {
+  <span class="k">private val</span> listeners = mutableListOf&lt;Callback&gt;()
+  <span class="k">fun</span> addListener(callback: Callback)    { listeners.add(callback) }
+  <span class="k">fun</span> removeListener(callback: Callback) { listeners.remove(callback) }
+}
+<span class="k">interface</span> Callback { <span class="k">fun</span> onEvent() }
+
+<span class="k">class</span> MainActivity : AppCompatActivity(), Callback {
+  <span class="k">override fun</span> onCreate(savedInstanceState: Bundle?) {
+    <span class="k">super</span>.onCreate(savedInstanceState)
+    EventManager.addListener(<span class="k">this</span>)     <span class="c">// ❌ không bao giờ removeListener</span>
+  }
+  <span class="k">override fun</span> onEvent() { Log.d(<span class="s">"MAIN_ACTIVITY"</span>, <span class="s">"Hey"</span>) }
+}</code></pre>
+  </div>
+</div>
+
+<div class="demo" id="act">
+  <h4>Demo · Xoay màn hình và Activity bị giữ lại</h4>
+  <p class="d">Mỗi lần xoay, Android tạo MainActivity mới. Singleton giữ listener → Activity cũ không bao giờ được GC.</p>
+  <div class="row"><label style="cursor:pointer"><input type="checkbox" id="ac-fix"> Sửa: <code>removeListener(this)</code> trong <code>onDestroy</code></label>
+    <button class="btn" id="ac-rot" style="margin-left:auto">↻ Xoay màn hình</button><button class="btn ghost" id="ac-gc">🗑 Chạy GC</button><button class="btn ghost" id="ac-r">Reset</button></div>
+  <div id="ac-h" class="dots" style="margin:12px 0;gap:5px"></div>
+  <div class="grid2"><div class="card"><div class="muted" style="font-size:13px">Đã cấp phát</div><div class="stat" id="ac-a">1</div></div><div class="card"><div class="muted" style="font-size:13px">Đã giải phóng</div><div class="stat" id="ac-d">0</div></div></div>
+  <p id="ac-t" class="muted" style="font-size:15px;margin:.6em 0 0"></p>
+</div>
+<p><b>Đọc profiler:</b> chạy <b>Run → Profile</b>, chọn <b>"Track Memory Consumption (Java/Kotlin allocations)"</b>. Đồ thị cập nhật trực tiếp; xoay thiết bị vài lần sẽ thấy vòng đời <code>MainActivity</code> (vùng đánh dấu 1; chấm đỏ là thao tác chạm). Ở vùng đánh dấu 2: <code>MainActivity</code> được cấp phát <b>4 lần</b> nhưng giải phóng <b>0 lần</b> → các Activity cũ vẫn bị <code>EventManager</code> tham chiếu, GC không thu được. Nhanh chóng có thể dẫn tới crash.</p>
+
+<div class="callout"><b class="t">Lời kết</b><p>Thực tế app không hay leak, nhưng khi có thì việc tìm nguồn bị hầu hết lập trình viên "sợ". Có đúng công cụ, bạn sẽ xác định được nguyên nhân và tối ưu để app dùng ít bộ nhớ hơn — tránh bị OS giết sớm.</p></div>
+<p class="src">Bổ sung: <a href="https://developer.apple.com/documentation/xcode/gathering-information-about-memory-use" target="_blank" rel="noopener">Apple – Memory use</a> · <a href="https://developer.android.com/studio/profile/memory-profiler" target="_blank" rel="noopener">Android – Memory Profiler</a> · <a href="https://square.github.io/leakcanary/" target="_blank" rel="noopener">LeakCanary</a> (công cụ cộng đồng tự động phát hiện leak Activity).</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Template nào của Instruments dùng để tìm leak?
+  <div class="opts"><button>Time Profiler</button><button>Leaks</button><button>Network</button></div>
+  <div class="exp">Leaks đánh dấu đỏ và chỉ ra hàm gây leak.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Vì sao <code>MainActivity</code> bị leak trong ví dụ?
+  <div class="opts"><button>Do xoay quá nhanh</button><button>Do Kotlin không có GC</button><button>Singleton <code>EventManager</code> giữ listener (chính là Activity cũ) và không ai gỡ</button></div>
+  <div class="exp">Cần <code>removeListener</code> khi Activity bị hủy.</div></div>
+<div class="q" data-ans="0"><b>3.</b> Nên đo bộ nhớ trên bản build nào?
+  <div class="opts"><button>Release</button><button>Debug</button><button>Bản nào cũng như nhau</button></div>
+  <div class="exp">Debug thêm nhiều overhead làm số liệu sai lệch.</div></div>

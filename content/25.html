@@ -1,0 +1,59 @@
+<span class="kicker">Chương 25 · Phần 3: Bundling · Best practice</span>
+<h1>Thu nhỏ code bằng R8 (Android)</h1>
+<p class="lead">Kích thước app còn phụ thuộc cả code native. Các công cụ ở chương này có thể cắt thêm vài MB và còn làm app khó bị dịch ngược hơn nhờ obfuscation.</p>
+
+<h2 id="r8">1. Bật R8</h2>
+<p><b>ProGuard</b> là công cụ cũ để thu nhỏ, tối ưu và làm rối (obfuscate) code Android. Từ RN ≥ 0.60, Android Gradle Plugin không dùng ProGuard nữa mà dùng <b>R8</b>: nhanh hơn, tương thích tính năng hiện đại như Kotlin (ProGuard không hỗ trợ), và vẫn tương thích file cấu hình ProGuard — nên bạn có thể vẫn thấy chữ "proguard" trong file Android, không sao.</p>
+<pre><code><span class="c">// android/app/build.gradle</span>
+<span class="k">def</span> enableProguardInReleaseBuilds = <span class="h"><span class="k">true</span></span></code></pre>
+<p>Trong template RN mặc định, biến này đặt <code>minifyEnabled = true</code> ở biến thể release, khiến Gradle áp dụng R8 khi đóng gói để phân phối.</p>
+
+<div class="demo" id="r8d">
+  <h4>Demo · Kích thước app mẫu của sách</h4>
+  <div class="row"><label style="cursor:pointer"><input type="checkbox" id="r8-m"> Bật R8 (<code>minifyEnabled</code>)</label><label style="cursor:pointer"><input type="checkbox" id="r8-s"> Bật <code>shrinkResources</code></label></div>
+  <div class="bar" style="height:36px;margin-top:10px"><i id="r8-b" style="background:var(--accent)"></i></div>
+  <p style="margin:.6em 0 0">Download size: <b id="r8-v" style="font-size:1.4rem"></b> <span id="r8-d" class="muted"></span></p>
+  <p class="muted" style="font-size:13px;margin:.3em 0 0">Chỉ số có thật trong sách: 9,5 MB (không tối ưu) → 6,3 MB (R8, −33%). Hiệu quả của <code>shrinkResources</code> ở demo chỉ là minh họa, không phải số đo.</p>
+</div>
+<p>Dự án lớn nên kỳ vọng cải thiện nhỏ hơn một chút, nhưng vẫn đáng làm.</p>
+
+<h2 id="rules">2. Quy tắc ProGuard cho R8</h2>
+<p>R8 cấu hình bằng "ProGuard rules" trong file riêng: điều khiển lớp/phương thức/trường nào <b>giữ lại</b> hay <b>bỏ</b>, và cấu hình mẫu obfuscation (đổi tên class/method) để gây khó dịch ngược. Trong app RN: <code>android/app/proguard-rules.pro</code> (mặc định trống).</p>
+<p>Thường không cần tự viết. Nhưng nếu sau khi loại bỏ code chết app chạy sai (một số dependency giả định tên class), bạn phải thêm class cần giữ — ví dụ Firebase:</p>
+<pre><code><span class="c"># proguard-rules.pro</span>
+-keep class io.invertase.firebase.** { *; }
+-dontwarn io.invertase.firebase.**
+
+<span class="c"># Obfuscation bật mặc định khi minifyEnabled. Muốn tắt:</span>
+-dontobfuscate</code></pre>
+
+<h2 id="res">3. Thu nhỏ tài nguyên</h2>
+<p>Khi R8 đã bật ở biến thể release, bật thêm nén tài nguyên (resource minification) để giảm tiếp:</p>
+<ol>
+  <li>Gộp tài nguyên trùng lặp.</li>
+  <li>Tối ưu PNG: giảm độ sâu màu, nén không mất dữ liệu.</li>
+  <li>Xử lý vector drawable.</li>
+</ol>
+<pre><code>android {
+  buildTypes {
+    release {
+      <span class="c">// Code shrinking, obfuscation, optimization — chỉ cho release; cần debuggable false</span>
+      <span class="h">minifyEnabled <span class="k">true</span></span>
+      <span class="c">// Resource shrinking; cần minifyEnabled = true</span>
+      <span class="h">shrinkResources <span class="k">true</span></span>
+    }
+  }
+}</code></pre>
+<div class="callout warn"><b class="t">Kiểm thử kỹ trước khi phát hành</b><p>Loại code chết có thể làm hỏng những chỗ dùng reflection. Hãy test app (nhất là các thư viện dùng tên class) rồi mới đẩy lên store. Dùng <b>Ruler</b> (<a href="chuong-20.html">Chương 20</a>) để kiểm tra chênh lệch download/install size.</p></div>
+<p class="src">Bổ sung: <a href="https://developer.android.com/build/shrink-code" target="_blank" rel="noopener">Android – Shrink, obfuscate, and optimize your app</a> · <a href="https://reactnative.dev/docs/signed-apk-android" target="_blank" rel="noopener">RN – Publishing to Google Play</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> R8 thay thế công cụ nào?
+  <div class="opts"><button>Metro</button><button>ProGuard</button><button>Gradle</button></div>
+  <div class="exp">R8 tương thích file cấu hình ProGuard.</div></div>
+<div class="q" data-ans="2"><b>2.</b> <code>shrinkResources</code> yêu cầu điều kiện nào?
+  <div class="opts"><button>Phải dùng iOS</button><button>Phải tắt R8</button><button><code>minifyEnabled true</code></button></div>
+  <div class="exp">Nén tài nguyên dựa trên kết quả R8.</div></div>
+<div class="q" data-ans="0"><b>3.</b> App chạy sai sau khi bật R8 vì thư viện giả định tên class. Giải pháp?
+  <div class="opts"><button>Thêm <code>-keep class …</code> vào proguard-rules.pro</button><button>Xóa node_modules</button><button>Tắt Hermes</button></div>
+  <div class="exp">Giữ lại các class bị gỡ nhầm.</div></div>

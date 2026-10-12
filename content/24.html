@@ -1,0 +1,83 @@
+<span class="kicker">Chương 24 · Phần 3: Bundling · Best practice</span>
+<h1>Tải code từ xa khi cần</h1>
+<p class="lead">Trên web, tải code từ server là chuyện thường. Trên mobile thì JS đã nằm sẵn trong app (chạy offline), nên đây là mô hình tư duy khác — và chỉ đáng dùng trong một số trường hợp.</p>
+
+<h2 id="when">1. Khi nào nên cân nhắc?</h2>
+<p>Hiệu quả của code splitting / tải code động phụ thuộc <b>engine JS</b>:</p>
+<div class="grid2">
+  <div class="card"><span class="pill" style="background:var(--good-soft);color:var(--good)">Hermes (mặc định)</span><p>Lợi ích <b>rất nhỏ</b>: Hermes dùng <b>memory mapping</b> nên đã chỉ đọc đúng phần bytecode cần.</p></div>
+  <div class="card"><span class="pill" style="background:var(--warn-soft);color:var(--warn)">JavaScriptCore / V8</span><p>Code splitting vẫn cải thiện đáng kể thời gian tải ban đầu nhờ nạp chunk theo yêu cầu.</p></div>
+</div>
+<p>Vì vậy hiếm app RN hiện đại hưởng lợi, nhưng vẫn có các trường hợp nên thử:</p>
+<ul>
+  <li>Bạn <b>không</b> dùng Hermes.</li>
+  <li>Có nhu cầu cụ thể về tải code từ xa.</li>
+  <li>Kích thước app ảnh hưởng đáng kể tới trải nghiệm.</li>
+  <li>App quá lớn cho Google Play (giới hạn <b>200 MB</b>).</li>
+  <li>Xây kiến trúc <b>microfrontend</b> bằng Module Federation.</li>
+  <li>Bạn đã dùng hết các kỹ thuật tối ưu khác.</li>
+</ul>
+
+<h2 id="repack">2. Chuyển sang Re.Pack</h2>
+<p>Metro mặc định <b>không</b> hỗ trợ code splitting cho production. Cần <b>Re.Pack</b> — công cụ xây trên Webpack (nay có cả Rspack, build nhanh hơn Metro trong hầu hết trường hợp) để bundling RN. Cần thêm công di chuyển cấu hình, nhưng đáng khi đã hết cách khác.</p>
+<pre><code>&gt; npx @callstack/repack-init</code></pre>
+<p>Lệnh này áp dụng thay đổi cần thiết và hướng dẫn bạn. Sau đó <code>npm start</code> sẽ phục vụ JS bằng dev server của Re.Pack (Webpack/Rspack) thay vì Metro. Có thể gặp vài điểm không tương thích — theo dõi hướng dẫn migration chính thức.</p>
+
+<h2 id="split">3. Tách bundle</h2>
+<p>Cách phổ biến: <b>dynamic import</b> + <code>React.lazy</code> + <code>Suspense</code>.</p>
+<pre><code><span class="c">// Trước — import thường</span>
+<span class="k">import</span> FeatureComponent <span class="k">from</span> <span class="s">'./FeatureComponent'</span>;
+
+<span class="c">// Sau — tạo điểm tách</span>
+<span class="k">const</span> FeatureComponent = React.lazy(() =&gt;
+  <span class="k">import</span>(<span class="c">/* webpackChunkName: "feature" */</span> <span class="s">'./FeatureComponent'</span>)
+);</code></pre>
+<p>Khi bundle, <code>FeatureComponent</code> thành file riêng <code>feature.chunk.bundle</code>. Ví dụ cho một màn hình:</p>
+<pre><code><span style="color:#f87171">-import SettingsScreen from './screens/SettingsScreen';</span>
+<span style="color:#86efac">+const SettingsScreen = React.lazy(() =&gt;
++  import(/* webpackChunkName: "settings" */ './screens/SettingsScreen')
++);</span>
+
+<span class="k">const</span> App = () =&gt; (
+  <span style="color:#86efac">+ &lt;Suspense fallback={&lt;LoadingSpinner /&gt;}&gt;</span>
+      &lt;SettingsScreen /&gt;
+  <span style="color:#86efac">+ &lt;/Suspense&gt;</span>
+);</code></pre>
+
+<div class="demo" id="chunk">
+  <h4>Demo · Main bundle và chunk tải theo yêu cầu</h4>
+  <p class="d">Bấm "Mở Settings" để mô phỏng việc Re.Pack tải chunk <code>settings</code> từ CDN lần đầu.</p>
+  <div class="row"><button class="btn" id="ck-open">Mở Settings</button><button class="btn ghost" id="ck-reset">Reset</button></div>
+  <div id="ck-v" style="margin-top:10px"></div>
+</div>
+
+<h3>Tải chunk từ xa: ScriptManager</h3>
+<p>Comment <code>webpackChunkName</code> đặt tên chunk, giúp bước cuối: chỉ cho Re.Pack cách lấy chunk không còn nằm trong main bundle:</p>
+<pre><code><span class="c">// index.js</span>
+<span class="k">import</span> { ScriptManager, Script } <span class="k">from</span> <span class="s">'@callstack/repack/client'</span>;
+
+ScriptManager.shared.addResolver((scriptId) =&gt; ({
+  url: __DEV__
+    ? Script.getDevServerURL(scriptId)                <span class="c">// dev: từ dev server</span>
+    : `https://my-cdn.com/assets/${scriptId}`,        <span class="c">// production: từ CDN</span>
+}));
+
+AppRegistry.registerComponent(appName, () =&gt; App);</code></pre>
+<p><code>ScriptManager</code> là client runtime của Re.Pack, cấu hình cách tìm và nạp các chunk ngoài main bundle. Còn nhiều yếu tố khác (caching, triển khai CDN production…) — xem tài liệu Re.Pack.</p>
+
+<h2 id="mf">4. Module Federation</h2>
+<p>Một use case hấp dẫn: chỉ tải tính năng mà <i>người dùng cụ thể</i> cần. Ví dụ app doanh nghiệp lớn có nhiều vai trò, mỗi vai trò dùng bộ chức năng khác nhau → tải theo quyền/tuỳ chọn thay vì gộp hết.</p>
+<p>Với tình huống phức tạp hơn — nhiều team độc lập, muốn tự chủ phát triển và triển khai — có thể xét <b>microfrontend</b> bằng <b>Module Federation</b>: giải pháp đã được kiểm chứng trên web và mobile nhờ Re.Pack.</p>
+<div class="callout bad"><b class="t">Đừng chọn microfrontend chỉ để giảm bundle</b><p>Kiến trúc này có độ phức tạp riêng; chỉ nên chọn khi lợi ích về tổ chức/quy trình phát triển vượt chi phí. Một khó khăn lớn là <b>quản lý phiên bản</b> — tự làm khá nặng nề. Nếu chấp nhận dịch vụ bên thứ ba, sách gợi ý <b>Zephyr Cloud</b>: đơn giản hóa vấn đề này, deploy dưới 1 giây, tích hợp chính thức với Re.Pack.</p></div>
+<p class="src">Bổ sung: <a href="https://re-pack.dev/docs/guides/code-splitting" target="_blank" rel="noopener">Re.Pack – Code splitting</a> · <a href="https://module-federation.io/" target="_blank" rel="noopener">Module Federation</a> · <a href="https://react.dev/reference/react/lazy" target="_blank" rel="noopener">React.lazy</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="2"><b>1.</b> Vì sao code splitting ít lợi ích với Hermes?
+  <div class="opts"><button>Hermes không hỗ trợ import()</button><button>Hermes chạy trên GPU</button><button>Memory mapping đã chỉ đọc phần bytecode cần thiết</button></div>
+  <div class="exp">JSC/V8 mới hưởng lợi rõ rệt.</div></div>
+<div class="q" data-ans="0"><b>2.</b> Muốn tách một màn hình thành chunk riêng cần gì?
+  <div class="opts"><button>Re.Pack + <code>React.lazy(import())</code> + <code>Suspense</code></button><button>Chỉ thêm Metro plugin</button><button>Đổi sang class component</button></div>
+  <div class="exp">Rồi cấu hình ScriptManager để biết tải chunk từ đâu.</div></div>
+<div class="q" data-ans="1"><b>3.</b> Khi nào chọn Module Federation?
+  <div class="opts"><button>Chỉ để giảm vài KB</button><button>Khi lợi ích tổ chức/quy trình (nhiều team độc lập) vượt overhead</button><button>Luôn luôn</button></div>
+  <div class="exp">Không chọn chỉ vì tối ưu kích thước.</div></div>

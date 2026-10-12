@@ -1,0 +1,64 @@
+<span class="kicker">Chương 11 · Phần 2: Native · Guide</span>
+<h1>Profile phần native của React Native</h1>
+<p class="lead">Khi React Native DevTools không đủ, ta chuyển sang công cụ của nền tảng: <b>Xcode Instruments</b> (iOS) và <b>Android Studio Profiler</b> (Android). Bạn sẽ học cách đọc đúng thông tin từ chúng.</p>
+
+<h2 id="why">1. Vì sao cần profiler native?</h2>
+<p>Nút thắt xảy ra ở cả hai phía. Ngoài CPU, bộ nhớ, mạng, <b>pin</b> cũng quan trọng với người dùng mobile — nếu bỏ độ sáng màn hình ra thì pin gần như phản ánh mức tải CPU.</p>
+<p>Kịch bản mẫu của sách dùng cho cả hai nền tảng: một app render <b>5.000 view trong ScrollView</b>, re-render mỗi lần bấm nút (đổi state), thêm một ảnh bật/tắt để đẩy danh sách xuống và buộc layout lại.</p>
+
+<div class="demo" data-tabs>
+  <h4>Hai nền tảng · Hai công cụ</h4>
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost" data-t="ios">iOS · Xcode</button><button class="btn ghost" data-t="and">Android · Android Studio</button></div>
+
+  <div data-p="ios">
+    <h3 style="margin-top:.2em">Debug Navigator</h3>
+    <p>Khi app đang chạy và gắn với debugger của Xcode, panel bên hiển thị nhanh: <b>CPU</b> (% theo <i>một</i> core nên có thể &gt; 100%, hay gặp ở app RN), <b>Memory</b>, <b>Disk</b> (SSD chậm hơn RAM), <b>Network</b> (TCP/IP, UDP/IP). Còn có View Hierarchy — xem <a href="chuong-15.html">Chương 15</a>.</p>
+    <h3>Instruments → Time Profiler</h3>
+    <ol class="steps">
+      <li>Xcode → <b>Open Developer Tool → Instruments</b>.</li>
+      <li>Chọn template <b>Time Profiler</b> (có CPU Profiler).</li>
+      <li>Chọn thiết bị và app ở dropdown cạnh nút đích, nhấn nút ghi đỏ. Profiler khởi động lại app và lấy mẫu CPU từ đầu.</li>
+      <li>Tái hiện lỗi (bấm nút, bật/tắt ảnh), rồi dừng ghi.</li>
+      <li>Phóng to khoảng quan tâm (<code>Cmd +</code>) — ví dụ ~1,3 s trong 27 s dữ liệu.</li>
+    </ol>
+    <p><b>Cách đọc:</b> một spike ngắn trên UI thread (tên app), tiếp theo là CPU nặng trên JS thread và rất nhiều việc trên UI thread. Trong lúc UI thread tải cao xuất hiện <b>Microhang</b>; JS thread tải cao thì không. Nghĩa là UI thread bận nên không phản hồi tương tác ngay. Nếu thread bị chặn hoàn toàn sẽ hiện <b>Hang</b> — ưu tiên điều tra cao. Công cụ <i>Hangs</i> đi kèm Time Profiler giúp phát hiện nhanh.</p>
+    <div class="callout"><b class="t">Thiết kế đáng trân trọng</b><p>Bạn có thể chặn hẳn JS thread mà người dùng vẫn bấm được các phần tử native; chỉ là sự kiện chưa truyền về JS ngay. Đây là hệ quả tốt của mô hình luồng RN.</p></div>
+    <p><b>Mẹo:</b> lọc Call Tree để ẩn thư viện hệ thống; <i>invert call tree</i> để có bottom-up sắp theo "weight" (đơn vị counts, <b>Mc</b> = mega counts = hàng triệu mẫu); chuyển giữa <b>Call Tree</b> và <b>Flame Graph</b>; ghim (pin) JS thread bằng dấu + để so với UI thread và hang trên cùng timeline. <b>Kết luận của sách:</b> lưu 5k phần tử trong ScrollView không tối ưu.</p>
+  </div>
+
+  <div data-p="and">
+    <h3 style="margin-top:.2em">Android Profiler</h3>
+    <p>Mở bằng <b>View → Tool Windows → Profiler</b> hoặc nút <i>"Profiler: Run 'app' as profileable"</i>. Nếu không được, cần debuggable build hoặc tự tạo bản <b>profileable</b> theo hướng dẫn chính thức.</p>
+    <ol class="steps">
+      <li>Kết nối app đang chạy (profileable) trên thiết bị.</li>
+      <li>Chọn task <b>Find CPU Hotspots</b> → <b>Start profiler task</b>.</li>
+      <li>Thực hiện cùng kịch bản (bấm nút vài lần) rồi dừng → hiện flame graph theo luồng.</li>
+    </ol>
+    <div class="callout warn"><b class="t">Chọn thiết bị yếu nhất</b><p>Hệ sinh thái Android phân mảnh hơn iOS nhiều (điện thoại, tablet, TV; thấp → cao cấp). Hãy profile trên thiết bị/emulator <b>thấp cấp nhất</b>, và dùng dữ liệu real-user monitoring nếu có.</p></div>
+    <p><b>Cách đọc:</b> phóng vào JS thread ngay sau khi bấm: nhiều spike ~1 ms từ Hermes duyệt qua 5k view; tổng cộng <b>&gt; 240 ms</b> — vượt xa ngân sách 16,6 ms. Khoảng <b>1/3</b> thời gian nằm ở pha <b>commit</b> của reconciliation (layout bằng Yoga rồi mới mount và vẽ).</p>
+    <p>Cuộn lên main thread: có event handler lúc nhấn xuống và lúc nhả tay; thời điểm nhả khớp gần như hoàn hảo với lúc JS bắt đầu tăng việc, nhờ lời gọi JSI đồng bộ. Ở kiến trúc cũ, thông tin phải được serialize và phát qua bridge → thêm overhead.</p>
+    <p>Như mọi profiler: xem top-down hoặc bottom-up, lọc theo thư viện (ví dụ "hermes"). Có thể <b>xuất trace</b> và mở bằng công cụ khác.</p>
+    <h3>Perfetto</h3>
+    <p>Công cụ system profiling/trace analysis, bổ sung cho Trace Viewer của Android Studio. Tải trace lên <b>ui.perfetto.dev</b> để phân tích từ góc nhìn khác (ví dụ memory trace do Android Studio tạo).</p>
+  </div>
+</div>
+
+<div class="demo" id="budget">
+  <h4>Tính nhanh · 240 ms là bao nhiêu khung hình?</h4>
+  <div class="row"><span>Công việc JS:</span><input type="range" id="bg-ms" min="1" max="400" value="240" style="flex:1;min-width:140px"><b id="bg-v"></b></div>
+  <div class="grid2" style="margin-top:8px"><div class="card"><div class="muted" style="font-size:13px">≈ khung hình bị bỏ ở 60 Hz</div><div class="stat" id="bg-60"></div></div><div class="card"><div class="muted" style="font-size:13px">≈ khung hình bị bỏ ở 120 Hz</div><div class="stat" id="bg-120"></div></div></div>
+</div>
+
+<div class="callout"><b class="t">Kỹ năng đáng đầu tư nhất</b><p>Biết dùng profiler giúp bạn sửa mọi loại vấn đề hiệu năng ở bất kỳ codebase nào, kể cả code bạn không viết.</p></div>
+<p class="src">Bổ sung: <a href="https://developer.apple.com/documentation/xcode/analyzing-the-performance-of-your-app" target="_blank" rel="noopener">Apple – Analyzing app performance</a> · <a href="https://developer.android.com/studio/profile" target="_blank" rel="noopener">Android – Profile your app</a> · <a href="https://perfetto.dev/" target="_blank" rel="noopener">Perfetto</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Trong Instruments, "Microhang" trên UI thread cho thấy gì?
+  <div class="opts"><button>JS thread bị crash</button><button>UI thread làm quá nhiều việc nên không đáp ứng tương tác tức thì</button><button>Mạng chậm</button></div>
+  <div class="exp">Hang hoàn toàn chặn thread; microhang là bản nhẹ hơn.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Nên profile Android trên thiết bị nào?
+  <div class="opts"><button>Cao cấp nhất</button><button>Bất kỳ</button><button>Thấp cấp nhất sẵn có</button></div>
+  <div class="exp">Hệ sinh thái phân mảnh; máy yếu lộ vấn đề rõ nhất.</div></div>
+<div class="q" data-ans="0"><b>3.</b> Perfetto dùng để làm gì?
+  <div class="opts"><button>Phân tích trace đã xuất, từ góc nhìn khác của Android Studio</button><button>Build APK</button><button>Minify JS</button></div>
+  <div class="exp">Tải trace lên ui.perfetto.dev.</div></div>

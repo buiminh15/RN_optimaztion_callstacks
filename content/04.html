@@ -1,0 +1,54 @@
+<span class="kicker">Chương 4 · Phần 1: JavaScript · Best practice</span>
+<h1>Uncontrolled Components</h1>
+<p class="lead">React "vẽ lại cả cây" mỗi khi state đổi — một abstraction tiện lợi nhưng không miễn phí. Khi cần, ta có thể "thoát" khỏi nó bằng ref. Ví dụ điển hình: <code>TextInput</code>.</p>
+
+<h2 id="escape">1. Lối thoát hiểm của React</h2>
+<p>Mọi abstraction đều đơn giản hóa thực tế và đánh đổi bằng độ chính xác, nên tốt nhất là có "lối thoát". React có <b>refs</b>, cho phép bỏ qua logic re-render. Component không bị điều khiển bởi state gọi là <b>uncontrolled component</b>.</p>
+
+<h2 id="controlled">2. TextInput controlled trong kiến trúc cũ</h2>
+<pre><code><span class="k">const</span> DummyTextInput = () =&gt; {
+  <span class="k">const</span> [value, setValue] = useState(<span class="s">"Text"</span>);
+  <span class="k">const</span> onChangeText = (text) =&gt; setValue(text);
+  <span class="k">return</span> &lt;TextInput onChangeText={onChangeText} <span class="h">value={value}</span> /&gt;;
+};</code></pre>
+<p>Mỗi ký tự gõ vào: native → <code>onChangeText</code> (thao tác 1) → React <code>setState</code> → đồng bộ lại giá trị xuống native (thao tác 2). Lợi ích: React là <b>nguồn sự thật duy nhất</b>, bạn có thể validate, che (mask) hay biến đổi input ngay khi gõ.</p>
+<p>Nhược điểm lộ ra khi tài nguyên hạn chế (máy Android yếu, JS đang tính toán nặng) và người dùng gõ nhanh: các cập nhật đến <b>không đúng thứ tự</b>. Trong kiến trúc async cũ, state React có thể lệch với native.</p>
+<div class="callout"><b class="t">New Architecture</b><p>Vấn đề mất đồng bộ của controlled TextInput <b>không nên còn</b> trong New Architecture. Kiến thức này vẫn hữu ích cho app cũ và để hiểu cơ chế.</p></div>
+
+<h2 id="repro">3. Tái hiện lỗi "gõ TEST ra TET"</h2>
+<p>Người dùng gõ nhanh T-E-S-T trong khi JS bận. Hãy bấm "Bước tiếp" để đi qua từng thao tác như sách mô tả:</p>
+<div class="demo" id="race">
+  <h4>Demo · Đua đồng bộ giữa native và JS</h4>
+  <div class="row"><button class="btn" id="race-n">Bước tiếp ▶</button><button class="btn ghost" id="race-r">Làm lại</button></div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><div class="muted" style="font-size:13px">Ô nhập native (người dùng thấy)</div><div class="stat" id="race-v" style="font-family:var(--mono)">&nbsp;</div></div>
+    <div class="card"><div class="muted" style="font-size:13px">Thao tác</div><div id="race-d" style="font-size:15px">Nhấn "Bước tiếp".</div></div>
+  </div>
+  <div class="log" id="race-l" style="margin-top:10px;max-height:200px"></div>
+</div>
+<p>Nguyên nhân gốc là <b>thứ tự thao tác</b>: mọi thứ sẽ ổn nếu thao tác 5 chạy trước thao tác 4. Giá trị người dùng thấy bị "quay ngược" từ <code>TES</code> về <code>TE</code>; trong lúc đó họ gõ thêm nên kết quả cuối thành <code>TET</code> — không phải điều họ định gõ.</p>
+
+<h2 id="fix">4. Giải pháp: bỏ prop <code>value</code></h2>
+<pre><code>&lt;TextInput
+  onChangeText={onChangeText}
+<span style="color:#f87171">-  value={value}</span>
+/&gt;</code></pre>
+<p>Dữ liệu giờ chỉ đi <b>một chiều</b>: từ native (<code>RCTSinglelineTextInputView</code> trên iOS, <code>AndroidTextInputNativeComponent</code> trên Android) lên JS. Native tự giữ state nội bộ của ô nhập nên không còn đồng bộ ngược → hết nhấp nháy.</p>
+<table class="cmp"><tr><th></th><th>Controlled</th><th>Uncontrolled</th></tr>
+<tr><td>Nguồn sự thật</td><td>State React</td><td>Native input</td></tr>
+<tr><td>Validate/mask khi gõ</td><td>Dễ</td><td>Khó hơn (dùng ref hoặc xử lý khi submit)</td></tr>
+<tr><td>Rủi ro lệch khi gõ nhanh</td><td>Có (kiến trúc cũ)</td><td>Không</td></tr>
+<tr><td>Chi phí re-render</td><td>Mỗi ký tự</td><td>Chỉ khi bạn tự setState</td></tr></table>
+<div class="callout warn"><b class="t">Đừng quên</b><p>Ngay cả khi bỏ <code>value</code>, nếu bạn vẫn <code>setValue</code> mỗi ký tự thì component cha vẫn re-render. Với form lớn, cân nhắc chỉ đọc giá trị qua ref khi submit.</p></div>
+<p class="src">Bổ sung: <a href="https://react.dev/learn/manipulating-the-dom-with-refs" target="_blank" rel="noopener">React – Manipulating the DOM with Refs</a> · <a href="https://reactnative.dev/docs/textinput" target="_blank" rel="noopener">React Native – TextInput</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="0"><b>1.</b> Uncontrolled TextInput khác controlled ở điểm nào?
+  <div class="opts"><button>Không truyền prop <code>value</code>; native tự giữ giá trị</button><button>Luôn dùng useReducer</button><button>Chạy trên luồng riêng</button></div>
+  <div class="exp">Bỏ <code>value</code> → dữ liệu chỉ chảy native → JS.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Nguyên nhân gốc của lỗi "TES → TE → TET"?
+  <div class="opts"><button>Bàn phím lỗi</button><button>Hermes cắt chuỗi</button><button>Các cập nhật đồng bộ ngược đến sai thứ tự khi JS bận</button></div>
+  <div class="exp">Cập nhật cũ ghi đè giá trị mới hơn trong lúc người dùng vẫn đang gõ.</div></div>
+<div class="q" data-ans="1"><b>3.</b> Lợi ích chính của controlled input?
+  <div class="opts"><button>Nhanh hơn</button><button>Có thể validate/mask/biến đổi input ngay khi gõ</button><button>Tốn ít RAM hơn</button></div>
+  <div class="exp">React là nguồn sự thật duy nhất nên có toàn quyền với giá trị.</div></div>

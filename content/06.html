@@ -1,0 +1,77 @@
+<span class="kicker">Chương 6 · Phần 1: JavaScript · Best practice</span>
+<h1>Atomic State Management</h1>
+<p class="lead">Một thay đổi ở state toàn cục có thể kéo re-render cả cây component, kể cả những nơi không hề dùng phần state đó. State "nguyên tử" giúp mỗi component chỉ đăng ký đúng phần mình cần.</p>
+
+<h2 id="problem">1. Vấn đề: state ở quá cao trong cây</h2>
+<p>React dựng lại UI từ state/props/context mỗi lần; component re-render khi đầu vào đổi hoặc khi cha re-render. Re-render xảy ra càng <b>cao</b> trong cây thì càng dễ lan xuống các lá một cách không cần thiết. Điều này đặc biệt rõ với state toàn cục — thường thấy ở codebase dùng nhiều <b>Context</b> hoặc <b>Redux</b>: đổi một giá trị trong store có thể re-render cả những component không liên quan.</p>
+<p>Ví dụ của sách: <code>App</code> giữ <code>filter</code> và <code>todos</code>, truyền xuống <code>FilterMenuItem</code> và <code>TodoItem</code> (chưa memo):</p>
+<pre><code><span class="k">const</span> App = () =&gt; {
+  <span class="k">const</span> [filter, setFilter] = useState(<span class="s">'all'</span>);
+  <span class="k">const</span> [todos, setTodos]   = useState(initialState);
+  <span class="k">const</span> filteredTodos = todos.filter(t =&gt;
+    filter === <span class="s">'active'</span> ? !t.completed : filter === <span class="s">'completed'</span> ? t.completed : <span class="k">true</span>);
+  <span class="k">return</span> (
+    &lt;View&gt;
+      {['all','active','completed'].map(f =&gt; &lt;FilterMenuItem key={f} currentFilter={filter} onChange={setFilter} /&gt;)}
+      {filteredTodos.map((todo, i) =&gt; &lt;TodoItem key={i} item={todo} onChange={setTodos} /&gt;)}
+    &lt;/View&gt;
+  );
+};</code></pre>
+<p>Hệ quả: đổi <code>filter</code> <i>hoặc</i> <code>todos</code> đều khiến App, FilterMenu và mọi TodoItem re-render. Tick một todo cũng làm FilterMenu render lại dù nó không phụ thuộc <code>todos</code>. Profiler sẽ cho thấy lý do là "hook changed" hoặc "parent rendered".</p>
+
+<h2 id="three">2. Ba hướng xử lý</h2>
+<div class="cards">
+  <div class="card"><span class="pill">①</span><h3 style="margin-top:.4em">Memo tay</h3><p>Dùng <code>React.memo</code>, <code>useMemo</code>, <code>useCallback</code>.</p></div>
+  <div class="card"><span class="pill">②</span><h3 style="margin-top:.4em">React Compiler</h3><p>Tự động memoize — xem chương 8.</p></div>
+  <div class="card"><span class="pill">③</span><h3 style="margin-top:.4em">State nguyên tử</h3><p>Thoát khỏi mô hình React: mỗi mảnh state là một <b>atom</b> độc lập, ngoài cây render.</p></div>
+</div>
+
+<h2 id="atom-intro">3. State nguyên tử (atomic)</h2>
+<p>Hướng <b>bottom-up</b>: chia state thành các đơn vị nhỏ, độc lập gọi là <b>atom</b>. Thay vì một store tập trung lớn, mỗi atom có thể được cập nhật và subscribe riêng ngoài mô hình render của React → re-render nhắm đúng mục tiêu. Thư viện: <b>Jotai</b>, <b>Zustand</b>, <b>Recoil</b>… (Vui: <i>Jotai</i> = "state" trong tiếng Nhật, <i>Zustand</i> = "state" trong tiếng Đức.) Ví dụ dùng Jotai:</p>
+<pre><code><span class="k">const</span> filterAtom = atom(<span class="s">"all"</span>);
+<span class="k">const</span> todosAtom  = atom(initialState);
+
+<span class="c">// đọc + ghi atom</span>
+<span class="k">const</span> FilterMenuItem = ({ title, filterType }) =&gt; {
+  <span class="k">const</span> [filter, setFilter] = useAtom(filterAtom);
+  <span class="k">return</span> &lt;TouchableOpacity onPress={() =&gt; setFilter(filterType)}&gt;&lt;Text&gt;{title}&lt;/Text&gt;&lt;/TouchableOpacity&gt;;
+};
+
+<span class="c">// chỉ ghi: KHÔNG subscribe → không re-render khi todos đổi</span>
+<span class="k">export const</span> TodoItem = ({ item }) =&gt; {
+  <span class="k">const</span> setTodos = <span class="h">useSetAtom(todosAtom)</span>;
+  <span class="k">return</span> (
+    &lt;TouchableOpacity onPress={() =&gt; setTodos(prev =&gt;
+      prev.map(t =&gt; t.id === item.id ? { ...t, completed: !t.completed } : t))}&gt;
+      {<span class="c">/* ... */</span>}
+    &lt;/TouchableOpacity&gt;
+  );
+};</code></pre>
+
+<div class="demo" id="atoms">
+  <h4>Demo · Đếm số lần render: state tập trung vs atom</h4>
+  <p class="d">Chọn cách quản lý state rồi bấm các thao tác. Số trong ô là số lần component đó đã render.</p>
+  <div class="row" style="margin-bottom:10px">
+    <button class="btn ghost on" data-mode="central">useState trong App</button><button class="btn ghost" data-mode="atom">Atoms (Jotai)</button>
+    <span style="margin-left:auto"></span>
+    <button class="btn" id="at-f">Đổi filter</button><button class="btn" id="at-t">Tick một todo</button><button class="btn ghost" id="at-r">Reset</button>
+  </div>
+  <div class="tree" id="at-tree"></div>
+  <p id="at-msg" class="muted" style="font-size:15px;margin-bottom:0"></p>
+</div>
+<p>Kết quả với atom: đổi <b>filter</b> → re-render mọi thứ đọc <code>filterAtom</code> (các FilterMenuItem) và nơi dùng kết quả lọc (root + TodoItem). Tick <b>todo</b> → chỉ component subscribe <code>todosAtom</code> render lại; FilterMenuItem <b>đứng yên</b>, không cần memo.</p>
+
+<div class="callout warn"><b class="t">Có nên đổi thư viện chỉ vì hiệu năng?</b>
+<p>Atomic state giúp giảm re-render suốt nhiều năm (qua hooks và <code>useSyncExternalStore</code>). Nhưng nay đã có <b>React Compiler</b>, việc di chuyển cả app sang thư viện mới chỉ để tối ưu render có thể là không khôn ngoan khi compiler làm phần nặng giúp bạn. Chọn atomic khi nó cũng hợp mô hình dữ liệu của bạn.</p></div>
+<p class="src">Bổ sung: <a href="https://jotai.org/" target="_blank" rel="noopener">Jotai</a> · <a href="https://zustand.docs.pmnd.rs/" target="_blank" rel="noopener">Zustand</a> · <a href="https://react.dev/reference/react/useSyncExternalStore" target="_blank" rel="noopener">React – useSyncExternalStore</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Atom là gì?
+  <div class="opts"><button>Một component đã memo</button><button>Một mảnh state nhỏ, độc lập, có thể subscribe riêng</button><button>Một Context provider</button></div>
+  <div class="exp">Atom là đơn vị state tối thiểu; component chỉ re-render khi atom nó đọc thay đổi.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Vì sao <code>useSetAtom</code> tốt cho <code>TodoItem</code> trong ví dụ?
+  <div class="opts"><button>Nhanh hơn useAtom 10 lần</button><button>Tự động debounce</button><button>Chỉ lấy setter, không subscribe giá trị nên không re-render khi todos đổi</button></div>
+  <div class="exp">Không đọc giá trị → không phụ thuộc → không bị kéo render.</div></div>
+<div class="q" data-ans="0"><b>3.</b> Có React Compiler rồi thì atomic state…?
+  <div class="opts"><button>Không còn là lựa chọn bắt buộc chỉ để giảm re-render</button><button>Bị cấm</button><button>Chậm hơn</button></div>
+  <div class="exp">Compiler giải quyết nhiều re-render thừa mà không cần đổi thư viện state.</div></div>

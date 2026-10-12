@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 1 – Vì sao hiệu năng quan trọng?</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html" selected>1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#perceived">Hiệu năng cảm nhận (perceived performance)</a><a href="#metrics">Hai chỉ số quan trọng: TTI và FPS</a><a href="#fps">Cảm nhận FPS trực tiếp</a><a href="#fast">"Nhanh" nghĩa là bao nhanh?</a><a href="#roadmap">Lộ trình cuốn sách</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 1 · Introduction</span>
+  <h1>Vì sao hiệu năng quan trọng?</h1>
+  <p class="lead">Với app di động, hiệu năng không chỉ là chuyện kỹ thuật mà là trải nghiệm người dùng. Một app nhanh và mượt có thể là khác biệt giữa người dùng hài lòng và người dùng gỡ app.</p>
+
+  <h2 id="perceived">1. Hiệu năng cảm nhận (perceived performance)</h2>
+  <p>Hiệu năng cảm nhận là app <b>cảm thấy</b> nhanh đến mức nào với người dùng. Nó không phải con số benchmark mà là "ảo giác về tốc độ".</p>
+  <div class="callout"><b class="t">Câu chuyện thang máy</b>
+    <p>Một tòa nhà ở New York bị phàn nàn thang máy chậm. Thay vì tăng tốc thang máy, quản lý lắp gương gần cửa thang. Mọi người mải ngắm mình nên thời gian chờ "ngắn đi". (Sách thừa nhận đây có thể chỉ là giai thoại, nhưng nguyên lý tâm lý về cảm nhận thời gian và sự phân tâm là có thật.)</p></div>
+
+  <div class="demo" id="perc">
+    <h4>Demo · Cùng thời gian chờ, cảm giác khác nhau</h4>
+    <p class="d">Cả hai màn hình đều mất đúng 3 giây để tải. Bên nào "nhanh" hơn theo cảm giác của bạn?</p>
+    <div class="grid2">
+      <div><div class="phone" id="perc-a"></div><p class="muted" style="text-align:center;margin:6px 0">Chỉ có spinner</p></div>
+      <div><div class="phone" id="perc-b"></div><p class="muted" style="text-align:center;margin:6px 0">Skeleton UI</p></div>
+    </div>
+    <div class="row" style="margin-top:8px"><button class="btn" id="perc-go">Tải dữ liệu</button><span id="perc-t" class="muted"></span></div>
+  </div>
+
+  <div class="callout warn"><b class="t">Đừng chỉ dựa vào mẹo</b>
+    <p>Splash screen, skeleton, placeholder hay preload chỉ cải thiện <i>cảm nhận</i>, không sửa nguyên nhân gốc. Vì vậy ta cần các chỉ số đo được: <b>TTI</b> và <b>FPS</b>.</p></div>
+
+  <h2 id="metrics">2. Hai chỉ số quan trọng: TTI và FPS</h2>
+  <p>Trong rất nhiều chỉ số có thể đo, hai chỉ số ảnh hưởng nhất đến cảm nhận tốc độ là: <i>app mở xong nhanh cỡ nào</i> (TTI) và <i>app mượt cỡ nào khi dùng</i> (FPS).</p>
+  <div class="cards">
+    <div class="card"><span class="pill">Lúc khởi động</span><h3 style="margin-top:.4em">TTI – Time to Interactive</h3>
+      <p>Từ lúc mở app đến lúc người dùng <b>tương tác được</b> mà không bị trễ hay giật.</p>
+      <p class="muted" style="font-size:15px">Biến thể thường gặp: <i>Time to Home</i>, <i>Time to Specific Screen</i> — đặc biệt quan trọng với app có điều hướng phức tạp hoặc tải nhiều dữ liệu đầu vào.</p></div>
+    <div class="card"><span class="pill">Lúc sử dụng</span><h3 style="margin-top:.4em">FPS – Frames Per Second</h3>
+      <p>Số khung hình hiển thị mỗi giây khi cuộn, vuốt, bấm. Lý tưởng <b>≥ 60 FPS</b>.</p>
+      <p class="muted" style="font-size:15px">FPS tụt → animation giật, app trông "thiếu chau chuốt".</p></div>
+  </div>
+  <div class="demo">
+    <h4>Mô hình tư duy</h4>
+    <div class="diag">
+      <div class="lane2"><span>Dòng thời gian</span>
+        <div class="row" style="flex-wrap:nowrap;gap:0">
+          <div class="box" style="flex:2;border-radius:10px 0 0 10px">Mở app → splash → tải bundle…</div>
+          <div class="box a" style="flex:0 0 auto;border-radius:0">⏱ TTI</div>
+          <div class="box" style="flex:3;border-radius:0 10px 10px 0">Cuộn · vuốt · bấm · animation → <b>FPS</b></div>
+        </div></div>
+    </div>
+    <p class="muted" style="margin-bottom:0;font-size:15px">Phần 1 &amp; 2 của sách tập trung vào <b>FPS</b> (JS/React và native). Phần 3 (bundling) tập trung vào <b>TTI</b>.</p>
+  </div>
+
+  <h2 id="fps">3. Cảm nhận FPS trực tiếp</h2>
+  <p>Màn hình 60 Hz vẽ 60 khung/giây, nghĩa là mỗi khung có <code>1000 / 60 ≈ 16,7 ms</code>. Màn 120 Hz chỉ còn <code>8,3 ms</code>. Hãy thử đổi tốc độ khung hình của cùng một chuyển động:</p>
+  <div class="demo" id="fps-demo">
+    <h4>Demo · Cùng chuyển động, khác FPS</h4>
+    <p class="d">Quả bóng luôn chạy cùng vận tốc; chỉ khác là màn hình được "vẽ lại" bao nhiêu lần mỗi giây.</p>
+    <div class="row">
+      <button class="btn ghost" data-fps="10">10 FPS</button><button class="btn ghost" data-fps="30">30 FPS</button>
+      <button class="btn ghost" data-fps="60">60 FPS</button><button class="btn ghost" data-fps="120">120 FPS*</button>
+    </div>
+    <div class="stage"><div class="ball"></div></div>
+    <div id="fps-out" class="muted" style="font-size:15px"></div>
+    <p class="muted" style="font-size:13px;margin:.6em 0 0">* Trình duyệt trên màn 60 Hz không thể hiển thị hơn 60 FPS thật; nếu màn của bạn là 120/144 Hz, mức 120 sẽ khác rõ rệt.</p>
+  </div>
+  <div class="callout"><b class="t">Mục tiêu đang dịch chuyển</b>
+    <p>Khi người dùng quen màn 120 Hz, 60 Hz bị coi là "giật". Mục tiêu 16,6 ms/khung đang dần thành <b>8,3 ms/khung</b>. Chương 2 sẽ cho bạn thử xem một tác vụ JS chặn bao nhiêu khung hình.</p></div>
+
+  <h2 id="fast">4. "Nhanh" nghĩa là bao nhanh?</h2>
+  <p>Tác giả thẳng thắn: chưa có đủ nghiên cứu độc lập chất lượng cao về "nhanh" với người dùng di động; phần lớn là số liệu quảng cáo của các hãng lớn hoặc khảo sát trả phí. Điều chắc chắn hơn là:</p>
+  <ul>
+    <li><b>Cảm giác tốc độ là mục tiêu di động.</b> Thiết bị mạnh hơn, người dùng kỳ vọng cao hơn.</li>
+    <li><b>Kỳ vọng phụ thuộc nhóm người dùng.</b> Người trẻ thường đòi hỏi nhanh hơn; app nội bộ doanh nghiệp khác app đại chúng.</li>
+    <li><b>Cách đáng tin nhất:</b> hiểu người dùng và đối thủ — phân tích analytics để xem họ rời đi ở đâu, và so tốc độ với app cạnh tranh.</li>
+  </ul>
+
+  <h2 id="roadmap">5. Lộ trình cuốn sách</h2>
+  <div class="cards">
+    <div class="card"><span class="pill">Phần 1</span><h3 style="margin-top:.4em">JavaScript</h3><p>Tối ưu <b>FPS</b> từ phía JS/React: re-render, state, animation.</p></div>
+    <div class="card"><span class="pill">Phần 2</span><h3 style="margin-top:.4em">Native</h3><p>Tối ưu <b>FPS &amp; TTI</b> từ phía native: luồng, bộ nhớ, view flattening.</p></div>
+    <div class="card"><span class="pill">Phần 3</span><h3 style="margin-top:.4em">Bundling</h3><p>Giảm kích thước JS/app bundle → <b>TTI</b> nhanh hơn.</p></div>
+  </div>
+  <p class="src">Nguồn: sách, mục "Why Performance Matters" (tr. 7–9). Bổ sung: <a href="https://web.dev/articles/vitals" target="_blank" rel="noopener">Web Vitals</a> là bộ chỉ số tương tự của thế giới web; <a href="https://developer.android.com/topic/performance/vitals/render" target="_blank" rel="noopener">Android – Slow rendering</a> định nghĩa "janky frame" theo ngân sách khung hình.</p>
+
+  <h2 id="quiz">Kiểm tra nhanh</h2>
+  <div class="q" data-ans="1"><b>1.</b> Skeleton UI cải thiện điều gì?
+    <div class="opts"><button>Thời gian tải thật</button><button>Hiệu năng cảm nhận</button><button>FPS</button></div>
+    <div class="exp">Skeleton không làm dữ liệu về nhanh hơn; nó làm thời gian chờ <i>có vẻ</i> ngắn hơn.</div></div>
+  <div class="q" data-ans="2"><b>2.</b> Ngân sách thời gian cho mỗi khung hình ở 120 Hz?
+    <div class="opts"><button>16,7 ms</button><button>12 ms</button><button>≈ 8,3 ms</button></div>
+    <div class="exp">1000 / 120 ≈ 8,3 ms.</div></div>
+  <div class="q" data-ans="0"><b>3.</b> "Time to Home" là biến thể của chỉ số nào?
+    <div class="opts"><button>TTI</button><button>FPS</button><button>Memory</button></div>
+    <div class="exp">Đó là thời gian đến khi màn hình Home sẵn sàng tương tác — một dạng TTI.</div></div>
+<div class="chnav"><a href="index.html"><small>←</small>Mục lục</a><a class="next" href="chuong-2.html"><small>Chương 2 →</small>JavaScript & React: profile và đo FPS</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 17 – Làm native module nhanh hơn</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html" selected>17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#scaffold">Dựng khung nhanh với Builder Bob</a><a href="#modern">Dùng ngôn ngữ hiện đại: Kotlin và Swift</a><a href="#bg">Tận dụng luồng nền</a><a href="#cpp">Thay code độc lập nền tảng bằng C++</a><a href="#cost">Chi phí ẩn khi bắc cầu giữa các ngôn ngữ</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 17 · Phần 2: Native · Best practice</span>
+<h1>Làm native module nhanh hơn</h1>
+<p class="lead">Khi JavaScript chưa đủ, bạn có thể xuống Swift/Kotlin, hoặc thậm chí C++ để lấy hiệu năng và tái sử dụng code. Chương này tổng hợp các thực hành tốt khi viết native module.</p>
+
+<h2 id="scaffold">1. Dựng khung nhanh với Builder Bob</h2>
+<p>Tạo một thư viện RN mới cần rất nhiều boilerplate: hỗ trợ kiến trúc cũ lẫn mới, codegen từ typing TypeScript/Flow, hạ tầng chạy/test/publish lên npm. <b>React Native Builder Bob</b> làm hộ bạn:</p>
+<pre><code>&gt; npx create-react-native-library@latest library-name</code></pre>
+<p>Nó hỏi tên package, bạn muốn <b>Turbo module</b>, <b>Fabric view</b> hay thư viện thuần JS, và ngôn ngữ ưa thích. Không phải lúc nào cũng muốn publish — với module riêng cho dự án, dùng cờ <code>--local</code> (local modules).</p>
+
+<h2 id="modern">2. Dùng ngôn ngữ hiện đại: Kotlin và Swift</h2>
+<div class="grid2">
+  <div class="card"><span class="pill">Android</span><p><b>Kotlin</b> (JetBrains) kế thừa Java, được Google công bố là ngôn ngữ ưu tiên năm 2019, tương thích hoàn toàn với Java. Một phần RN đã được viết lại bằng Kotlin; thư viện do Builder Bob sinh ra đã dùng Kotlin.</p></div>
+  <div class="card"><span class="pill">iOS</span><p><b>Swift</b> (2014) thay Objective-C dài hạn; dùng song song được với Obj-C để di chuyển dần. Thách thức: <b>tương tác C++</b>. RN New Architecture dùng C++ cho lõi, nên iOS nội bộ vẫn dựa vào Objective-C và Objective-C++, còn Swift–C++ interop còn rất mới và thử nghiệm.</p></div>
+</div>
+<p>Cách làm: tạo một "wrapper" nhỏ nối Objective-C sang Swift. Hơi rườm rà nhưng chạy được:</p>
+<ol class="steps">
+  <li><b>Bật Swift trong Podspec:</b>
+<pre><code><span style="color:#f87171">- s.source_files = "ios/**/*.{h,m,mm,cpp}"</span>
+<span style="color:#86efac">+ s.source_files = "ios/**/*.{h,m,mm,cpp,swift}"</span></code></pre></li>
+  <li><b>Tạo file Swift trong Xcode</b>, đặt trong thư mục iOS của module, chọn "Yes" để tạo Bridging Header.</li>
+  <li><b>Sửa header thư viện</b> để Swift không lỗi vì kiểu C++ (Swift không hiểu C++):
+<pre><code>#import &lt;Foundation/Foundation.h&gt;
+<span class="h">#if __cplusplus</span>
+#import "ReactCodegen/RNAwesomeLibrarySpec/RNAwesomeLibrarySpec.h"
+<span class="h">#endif</span>
+@interface AwesomeLibrary : NSObject
+<span class="h">#if __cplusplus</span> &lt;NativeAwesomeLibrarySpec&gt; <span class="h">#endif</span>
+@end</code></pre></li>
+  <li><b>Import header chính trong Bridging Header:</b> <code>#import "AwesomeLibrary.h"</code></li>
+  <li><b>Viết extension Swift</b> và lộ ra Obj-C bằng <code>@objc</code>:
+<pre><code><span class="k">extension</span> AwesomeLibrary {
+  @objc <span class="k">func</span> multiply(_ a: Double, b: Double) -&gt; NSNumber { a * b <span class="k">as</span> NSNumber }
+}</code></pre></li>
+  <li><b>Trong file <code>.mm</code>, dùng <code>RCT_EXTERN_METHOD</code>:</b>
+<pre><code>#import "AwesomeLibrary.h"
+#if __has_include("awesome_library/awesome_library-Swift.h")
+#import "awesome_library/awesome_library-Swift.h"   <span class="c">// khi dùng framework tĩnh/động</span>
+#else
+#import "awesome_library-Swift.h"
+#endif
+
+@implementation AwesomeLibrary
+RCT_EXPORT_MODULE()
+RCT_EXTERN_METHOD(multiply:(double)a b:(double)b);
+@end</code></pre>
+  <p class="muted" style="font-size:15px">Xcode sinh header <code>&lt;library-name&gt;-Swift.h</code> (có tiền tố tên thư viện ở chế độ framework), nên cần kiểm tra bằng <code>__has_include</code>. <code>RCT_EXTERN_METHOD</code> ánh xạ hàm Obj-C sang lời gọi Swift. Cộng đồng đang làm hỗ trợ Swift mặc định nên boilerplate này hy vọng sẽ biến mất.</p></li>
+</ol>
+
+<h2 id="bg">3. Tận dụng luồng nền</h2>
+<p>Trên web chủ yếu một luồng (web worker khác hơn một chút). Trong RN bạn khai thác được sức mạnh của thiết bị. Mặc định hàm <b>đồng bộ</b> của Turbo Module chạy trên <b>JS thread</b> (cả iOS lẫn Android). Muốn đẩy việc sang nền, viết hàm <b>async</b>:</p>
+
+<div class="demo" id="sync">
+  <h4>Demo · Hàm sync chặn JS thread, hàm async thì không</h4>
+  <p class="d">Bộ đếm "JS tick" tăng mỗi 100 ms khi JS thread rảnh. Gọi native function mất 2 giây theo hai cách.</p>
+  <div class="row"><button class="btn" id="sy-s">Gọi sync</button><button class="btn" id="sy-a">Gọi async (nền)</button><span style="margin-left:auto">JS tick: <b id="sy-c" style="font-size:1.3rem">0</b></span></div>
+  <div class="lane"><b>JS thread</b><div class="bar"><i id="sy-js" style="width:0;background:var(--bad)"></i></div></div>
+  <div class="lane"><b>Native (background) thread</b><div class="bar"><i id="sy-nt" style="width:0"></i></div></div>
+  <p id="sy-t" class="muted" style="font-size:15px;margin:.4em 0 0"></p>
+</div>
+
+<h3>iOS: <code>DispatchQueue</code></h3>
+<pre><code>@objc <span class="k">func</span> multiplyOnBackgroundThread(
+  _ a: Double, b: Double,
+  resolve: @escaping RCTPromiseResolveBlock,
+  reject: RCTPromiseRejectBlock
+) {
+  <span class="h">DispatchQueue.global().async</span> {
+    resolve(a * b)        <span class="c">// báo kết quả về JS</span>
+  }
+}</code></pre>
+<p>Khối trong <code>DispatchQueue.global()</code> chạy khi hàng đợi nền toàn cục sẵn sàng; bên trong gọi <code>resolve()</code> để thông báo cho hàm JS.</p>
+<h3>Android: Kotlin coroutines</h3>
+<p>Không truy cập thread trực tiếp mà dùng <b>coroutine</b> — một phần của framework đồng thời Kotlin, dễ đọc, dễ bảo trì. Coroutine không gắn với thread vật lý: hàng nghìn coroutine có thể chạy trên vài thread.</p>
+<pre><code>@ReactModule(name = AwesomeLibraryModule.NAME)
+<span class="k">class</span> AwesomeLibraryModule(reactContext: ReactApplicationContext) : NativeAwesomeLibrarySpec(reactContext) {
+  <span class="k">private val</span> moduleScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+  <span class="k">override fun</span> invalidate() {
+    <span class="k">super</span>.invalidate()
+    moduleScope.cancel()          <span class="c">// ✅ tránh memory leak</span>
+  }
+
+  <span class="k">override fun</span> multiplyOnBackgroundThread(a: Double, b: Double, promise: Promise?) {
+    moduleScope.launch { promise?.resolve(a * b) }
+  }
+}</code></pre>
+<p>Đặt breakpoint, bạn sẽ thấy hàm chạy trên worker thread thay vì main thread (cả hai nền tảng). Xem thêm các lưu ý ở <a href="chuong-14.html">Chương 14</a>.</p>
+
+<h2 id="cpp">4. Thay code độc lập nền tảng bằng C++</h2>
+<p>Logic không phụ thuộc nền tảng có thể viết lại bằng C++ để tăng tốc rõ rệt; C++ chạy trên iOS, Android, Windows… Đổi lại: phải <b>rất cẩn thận</b> với luồng và memory leak (xem <a href="chuong-13.html">Chương 13</a>). RN website có hướng dẫn C++ Turbo Modules.</p>
+<p>Tại 1/2025, C++ Turbo Module <b>không hỗ trợ autolinking trên iOS</b>. Để khỏi sửa <code>AppDelegate</code>, dùng <code>registerCxxModuleToGlobalModuleMap</code> trong một class Obj-C nhỏ, tận dụng <code>+ load</code> (gọi một lần khi class được nạp vào runtime lúc khởi động):</p>
+<pre><code>#include &lt;ReactCommon/CxxTurboModuleUtils.h&gt;
+@implementation YourModule
++ (<span class="k">void</span>)load {
+  facebook::react::registerCxxModuleToGlobalModuleMap(
+    std::string(facebook::react::YourModule::kModuleName),
+    [&amp;](std::shared_ptr&lt;facebook::react::CallInvoker&gt; jsInvoker) {
+      <span class="k">return</span> std::make_shared&lt;facebook::react::YourModule&gt;(jsInvoker);
+    });
+}
+@end</code></pre>
+
+<h2 id="cost">5. Chi phí ẩn khi bắc cầu giữa các ngôn ngữ</h2>
+<table class="cmp"><tr><th>Cầu nối</th><th>Chi phí</th><th>Ghi chú</th></tr>
+<tr><td><b>Objective-C++</b></td><td>Trộn Obj-C với C++ gần như <b>0</b> (compile-time) — nhưng gọi method Obj-C phải tra bảng method (dynamic)</td><td>Turbo Module viết bằng Obj-C vẫn bị tra bảng.</td></tr>
+<tr><td><b>Swift ↔ C++</b></td><td>Swift dùng vtable theo class (như C++); interop với C++ gần như <b>0</b></td><td>Lý do <b>Nitro Modules</b> (bỏ qua Obj-C, dùng C++ interop) có thể nhanh hơn đáng kể.</td></tr>
+<tr><td><b>JNI</b> (Android)</td><td>Mỗi lần gọi tra bảng hàm → overhead</td><td>Gọi Kotlin→C++ trực tiếp qua JNI chậm hơn nhưng đáng với tác vụ dài. Với C++ Turbo Module, JNI chủ yếu dùng lúc khởi tạo; runtime JS giữ tham chiếu C++ qua <b>JSI</b> nên gọi trực tiếp, không overhead.</td></tr></table>
+<p class="src">Bổ sung: <a href="https://callstack.github.io/react-native-builder-bob/" target="_blank" rel="noopener">Builder Bob</a> · <a href="https://reactnative.dev/docs/turbo-native-modules-introduction" target="_blank" rel="noopener">Turbo Native Modules</a> · <a href="https://nitro.margelo.com/" target="_blank" rel="noopener">Nitro Modules</a> · <a href="https://kotlinlang.org/docs/coroutines-overview.html" target="_blank" rel="noopener">Kotlin coroutines</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="0"><b>1.</b> Vì sao phải <code>moduleScope.cancel()</code> trong <code>invalidate()</code>?
+  <div class="opts"><button>Tránh memory leak khi module bị hủy</button><button>Để tăng FPS</button><button>Bắt buộc bởi Gradle</button></div>
+  <div class="exp">Coroutine còn chạy sẽ giữ tham chiếu tới module.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Swift không hiểu kiểu C++. Cách xử lý trong header thư viện?
+  <div class="opts"><button>Xóa codegen</button><button>Viết lại bằng Java</button><button>Bọc phần import C++ trong <code>#if __cplusplus</code></button></div>
+  <div class="exp">Swift không định nghĩa <code>__cplusplus</code> nên bỏ qua phần đó.</div></div>
+<div class="q" data-ans="1"><b>3.</b> Vì sao Nitro Modules có thể nhanh hơn?
+  <div class="opts"><button>Dùng bridge cũ</button><button>Bỏ qua Objective-C, dùng Swift–C++ interop gần như không tốn chi phí</button><button>Chạy trên GPU</button></div>
+  <div class="exp">Tránh tra bảng method của Obj-C.</div></div>
+<div class="chnav"><a href="chuong-16.html"><small>← Chương 16</small>Dùng SDK native thay vì web</a><a class="next" href="chuong-18.html"><small>Chương 18 →</small>Săn memory leak native</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

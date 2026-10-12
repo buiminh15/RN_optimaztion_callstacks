@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 21 – Kích thước thật của thư viện bên thứ ba</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html" selected>21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 21 · Phần 3: Bundling · Best practice</span>
+<h1>Xác định kích thước thật của thư viện bên thứ ba</h1>
+<p class="lead">Hệ sinh thái JS thích "đừng làm lại điều đã có". Kết quả là npm có hàng triệu thư viện và <code>node_modules</code> chiếm hàng GB — nhưng nhờ bundler chỉ một phần nhỏ chui vào app RN. Chương này là bộ công cụ hàng ngày để biết <b>kích thước thật</b> của dependency.</p>
+
+<div class="cards">
+  <div class="card"><span class="pill">Website</span><h3 style="margin-top:.4em">bundlephobia.com</h3>
+    <p>Nhập tên package npm → kích thước <b>minified</b>, <b>nén (gzip)</b>, và cả thời gian tải (hữu ích hơn cho web). Có phân rã package và dependency của nó, giống <code>react-native-bundle-visualizer</code> (chương sau).</p></div>
+  <div class="card"><span class="pill">Website · dự phòng</span><h3 style="margin-top:.4em">pkg-size.dev</h3>
+    <p>Khi Bundlephobia từ chối một package hoặc bị sập. Cài package vào một container web và hiển thị kích thước minified &amp; nén.</p></div>
+  <div class="card"><span class="pill">IDE · thời gian thực</span><h3 style="margin-top:.4em">Import Cost (VS Code)</h3>
+    <p>Hiển thị kích thước import ngay cạnh code (cả trên Cursor…). Chạy import qua <b>Webpack</b> — vốn không hỗ trợ RN nên thường thất bại với package có code native, nhưng dùng tốt với phần còn lại.</p></div>
+</div>
+
+<div class="demo" id="pk">
+  <h4>Thực hành · Chọn công cụ phù hợp</h4>
+  <p class="d">Bạn đang ở tình huống nào?</p>
+  <div class="row" id="pk-b"></div>
+  <p id="pk-r" style="margin:.8em 0 0"></p>
+</div>
+<div class="callout warn"><b class="t">Giới hạn chung</b><p>Các số liệu từ web là <b>tham khảo</b>: chúng đo theo bundler web, không phải Metro + Hermes bytecode. Số cuối cùng phải xác nhận bằng cách phân tích bundle thật (<a href="chuong-19.html">Chương 19</a>) trước và sau khi thêm thư viện.</p></div>
+<div class="callout"><b class="t">Mẹo</b><p>Bạn có thể dùng Webpack hoặc Rspack làm bundler cho dự án RN qua <b>Re.Pack</b> — khi đó Import Cost cũng có thể phản ánh đúng hơn.</p></div>
+<p class="src">Bổ sung: <a href="https://bundlephobia.com/" target="_blank" rel="noopener">bundlephobia.com</a> · <a href="https://pkg-size.dev/" target="_blank" rel="noopener">pkg-size.dev</a> · <a href="https://marketplace.visualstudio.com/items?itemName=wix.vscode-import-cost" target="_blank" rel="noopener">Import Cost</a> · <a href="https://github.com/IjzerenHein/react-native-bundle-visualizer" target="_blank" rel="noopener">react-native-bundle-visualizer</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="0"><b>1.</b> Vì sao Import Cost hay lỗi với thư viện RN?
+  <div class="opts"><button>Nó dùng Webpack, không hỗ trợ native của RN</button><button>Nó cần Wi-Fi</button><button>Nó chỉ chạy trên Mac</button></div>
+  <div class="exp">Kết quả chỉ đáng tin với package thuần JS.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Bundlephobia bị sập, bạn dùng gì?
+  <div class="opts"><button>Flashlight</button><button>Perfetto</button><button>pkg-size.dev</button></div>
+  <div class="exp">Dịch vụ tương tự, cài package trong web container.</div></div>
+<div class="chnav"><a href="chuong-20.html"><small>← Chương 20</small>Phân tích kích thước app bundle</a><a class="next" href="chuong-22.html"><small>Chương 22 →</small>Tránh barrel exports</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

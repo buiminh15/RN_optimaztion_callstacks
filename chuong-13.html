@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 13 – Quản lý bộ nhớ native</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html" selected>13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#kinds">Hai trường phái: thủ công và tự động</a><a href="#cpp">C++: smart pointer</a><a href="#kotlin">Android (Kotlin/JVM)</a><a href="#swift">iOS (Swift/Obj-C): ARC</a><a href="#leaks">Bốn nguồn memory leak</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 13 · Phần 2: Native · Guide</span>
+<h1>Hiểu quản lý bộ nhớ native</h1>
+<p class="lead">Để săn memory leak native (chương 18), bạn cần biết ngôn ngữ native quản lý bộ nhớ ra sao: thủ công, đếm tham chiếu (ARC) hay garbage collector. Chương này là phần lý thuyết + thực hành cho C++, Kotlin và Swift.</p>
+
+<h2 id="kinds">1. Hai trường phái: thủ công và tự động</h2>
+<p><b>Thủ công</b> (C, C++): bạn tự cấp phát và giải phóng. Dài dòng, dễ sai, nhưng đúng thì cho hiệu năng tốt nhất — phổ biến trong game. <b>Tự động</b>: dễ hiểu, dễ bảo trì — lựa chọn mặc định trong hầu hết trường hợp.</p>
+<div class="cards">
+  <div class="card"><span class="pill">Tự động</span><h3 style="margin-top:.4em">Reference counting</h3>
+    <p>Objective-C, Swift (<b>ARC</b>), cả Python, PHP. Mỗi tham chiếu tăng bộ đếm; hết phạm vi thì giảm; về 0 thì giải phóng <b>ngay lập tức</b>, chính xác.</p>
+    <p class="muted" style="font-size:15px">⚠ Vòng tham chiếu (reference cycle): hai object giữ <i>strong</i> reference lẫn nhau → bộ đếm kẹt ở 1, không bao giờ giải phóng. Giải pháp: <b>weak reference</b>.</p></div>
+  <div class="card"><span class="pill">Tự động</span><h3 style="margin-top:.4em">Garbage Collector</h3>
+    <p>JavaScript, Java, C#, Kotlin. GC chạy "độc lập", ví dụ Hermes tạo thread riêng chạy GC <b>Hades</b>; quét và giải phóng object không còn <i>tiếp cận được</i>.</p>
+    <p class="muted" style="font-size:15px">Không lo vòng tham chiếu, nhưng thời điểm chạy <b>không xác định</b>; nếu GC không concurrent, app bị tạm dừng trong lúc GC → ảnh hưởng cảm nhận người dùng.</p></div>
+  <div class="card"><span class="pill">Thủ công</span><h3 style="margin-top:.4em">Stack &amp; Heap</h3>
+    <p><b>Stack</b>: LIFO, tự cấp/giải phóng, rất nhanh nhưng nhỏ và gói trong phạm vi. <b>Heap</b>: lớn, cấp phát động (<code>new</code>/<code>malloc</code>), bạn phải tự giải phóng.</p></div>
+</div>
+
+<div class="demo" id="arc">
+  <h4>Demo · ARC và vòng tham chiếu</h4>
+  <p class="d">Biến <code>main</code> giữ A. A giữ B (strong). B giữ lại A. Chọn B→A là strong hay weak, rồi bấm "main thả A".</p>
+  <div class="row"><label><input type="radio" name="arc-m" value="strong" checked> B→A <b>strong</b></label><label><input type="radio" name="arc-m" value="weak"> B→A <b>weak</b></label>
+    <button class="btn" id="arc-go" style="margin-left:auto">main thả A</button><button class="btn ghost" id="arc-r">Reset</button></div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="node" id="arc-A"><span class="cnt" id="arc-a">1</span><b>A</b> <span id="arc-sa" class="muted"></span></div>
+    <div class="node" id="arc-B"><span class="cnt" id="arc-b">1</span><b>B</b> <span id="arc-sb" class="muted"></span></div>
+  </div>
+  <p id="arc-t" class="muted" style="font-size:15px;margin:.6em 0 0"></p>
+</div>
+
+<h2 id="cpp">2. C++: smart pointer</h2>
+<p>Đã qua thời gọi <code>new</code>/<code>delete</code> thủ công mọi nơi: thư viện chuẩn có <b>smart pointer</b> giúp giảm leak. (Phần C++ giả định bạn biết con trỏ.)</p>
+<table class="cmp"><tr><th>Kiểu</th><th>Đặc điểm</th></tr>
+<tr><td><code>std::unique_ptr&lt;T&gt;</code></td><td>Sở hữu duy nhất; <b>không copy</b>, chỉ <i>move</i>.</td></tr>
+<tr><td><code>std::shared_ptr&lt;T&gt;</code></td><td>Đếm tham chiếu; nhiều chủ sở hữu. Phổ biến nhất, giống cơ chế của Obj-C/Swift.</td></tr>
+<tr><td><code>std::weak_ptr&lt;T&gt;</code></td><td>Đi kèm shared_ptr; truy cập object nhưng <b>không tăng</b> bộ đếm.</td></tr></table>
+<h3>unique_ptr</h3>
+<pre><code><span class="k">void</span> takeOwnership(std::unique_ptr&lt;std::string&gt; s1) {
+  std::cout &lt;&lt; *s1;   <span class="c">// tự xóa khi hàm kết thúc</span>
+}
+<span class="k">int</span> main() {
+  <span class="k">auto</span> str1 = std::make_unique&lt;std::string&gt;(<span class="s">"Hello World"</span>);
+  takeOwnership(<span class="h">std::move(str1)</span>);   <span class="c">// chuyển quyền sở hữu; str1 bị xóa tại đây</span>
+}</code></pre>
+<h3>shared_ptr</h3>
+<pre><code><span class="k">void</span> takeOwnership(std::shared_ptr&lt;std::string&gt; s1) { <span class="c">/* copy con trỏ → count+1; ra khỏi hàm → count-1 */</span> }
+<span class="k">void</span> takeReference(<span class="k">const</span> std::shared_ptr&lt;std::string&gt; &amp;s1) { <span class="c">/* tham chiếu → count không đổi */</span> }
+
+<span class="k">auto</span> str1 = std::make_shared&lt;std::string&gt;(<span class="s">"Hello World"</span>);
+takeOwnership(str1);   <span class="c">// vẫn dùng str1 được sau đó</span>
+takeReference(str1);   <span class="c">// không copy</span></code></pre>
+<p><b>Khi nào truyền gì?</b> Truyền <b>reference</b> khi việc dùng <code>shared_ptr</code> trong hàm không sống lâu hơn caller; truyền <b>by value</b> khi cần nó sống độc lập với caller.</p>
+<h3>weak_ptr</h3>
+<pre><code><span class="k">void</span> useWeakPtr(std::weak_ptr&lt;std::string&gt; weak) {
+  <span class="k">if</span> (<span class="k">auto</span> shared = weak.lock()) {   <span class="c">// lock() → shared_ptr nếu object còn</span>
+    std::cout &lt;&lt; *shared;               <span class="c">// an toàn; count tăng tạm thời</span>
+  } <span class="k">else</span> {
+    std::cout &lt;&lt; <span class="s">"Object no longer exists!\n"</span>;
+  }
+}
+<span class="k">auto</span> str1 = std::make_shared&lt;std::string&gt;(<span class="s">"Hello World"</span>);
+std::weak_ptr&lt;std::string&gt; weak1 = str1;   <span class="c">// không tăng count (use_count() = 1)</span>
+useWeakPtr(weak1);   <span class="c">// còn</span>
+str1.reset();        <span class="c">// count → 0, object bị hủy</span>
+useWeakPtr(weak1);   <span class="c">// "Object no longer exists!"</span></code></pre>
+
+<h2 id="kotlin">3. Android (Kotlin/JVM)</h2>
+<p>Kotlin chạy trên JVM, dùng GC — giống JS, bạn vẫn có thể leak nếu quên giải phóng tài nguyên (không hủy đăng ký listener, không hủy tác vụ nền dài). Một công cụ chỉ dẫn GC là các container "weak" như <code>WeakHashMap</code> (JS có <code>WeakMap</code>): không giữ strong reference nên object bị thu ở lượt GC kế tiếp khi không ai khác tham chiếu.</p>
+<pre><code><span class="k">val</span> weakMap = WeakHashMap&lt;String, String&gt;()
+run { weakMap[String(<span class="s">"temp key"</span>)] = <span class="s">"some value"</span> }   <span class="c">// size = 1</span>
+System.gc(); Thread.sleep(<span class="s">100</span>)
+println(weakMap.size)                               <span class="c">// 0 — đã bị thu</span>
+
+<span class="c">// WeakHashMap chỉ yếu với KEY. Muốn yếu với VALUE:</span>
+weakMap[<span class="s">"key"</span>] = WeakReference(LargeObject(<span class="s">"1"</span>))</code></pre>
+
+<h2 id="swift">4. iOS (Swift/Obj-C): ARC</h2>
+<pre><code><span class="k">do</span> {
+  <span class="k">let</span> person1 = Person(name: <span class="s">"John"</span>)  <span class="c">// ref count: 1</span>
+  <span class="k">do</span> {
+    <span class="k">let</span> person2 = person1             <span class="c">// ref count: 2 (KHÔNG copy!)</span>
+  }                                    <span class="c">// ra phạm vi → 1</span>
+}                                      <span class="c">// ra phạm vi → 0, giải phóng</span></code></pre>
+
+<h2 id="leaks">5. Bốn nguồn memory leak</h2>
+<h3>① Quên giải phóng (manual)</h3>
+<pre><code><span class="k">int</span> main() {
+  std::string *str1 = <span class="k">new</span> std::string{<span class="s">"Hey"</span>};
+  std::cout &lt;&lt; *str1;
+  <span class="c">// ❌ quên delete str1 → leak</span>
+}
+<span class="c">// ✅ delete str1;   hoặc tốt hơn: cấp phát trên stack</span>
+std::string str1 = std::string{<span class="s">"Hey"</span>};</code></pre>
+<p>Hãy nghĩ hai lần trước khi đặt thứ gì lên heap (overhead lớn hơn stack đáng kể). Nhưng cũng đừng nhét quá nhiều lên stack — rủi ro <b>stack overflow</b>. Ưu tiên stack, dùng heap khi cần.</p>
+<h3>② Vòng tham chiếu</h3>
+<p>Nguyên nhân phổ biến nhất khi dùng reference counting. Thực tế vòng có thể trải qua nhiều class, rất khó tìm.</p>
+<pre><code><span class="c">// C++</span>                                    <span class="c">// Swift</span>
+<span class="k">class</span> A { std::shared_ptr&lt;B&gt; b; };       <span class="k">class</span> A { <span class="k">var</span> b: B? }
+<span class="k">class</span> B { std::shared_ptr&lt;A&gt; a; };       <span class="k">class</span> B { <span class="k">var</span> a: A? }   <span class="c">// ❌ cycle</span>
+
+<span class="c">// Sửa: phá vòng bằng weak</span>
+<span class="k">class</span> B { std::weak_ptr&lt;A&gt; a; };         <span class="k">class</span> B { <span class="h">weak</span> <span class="k">var</span> a: A? }</code></pre>
+<p>Cách khác: tạo class thứ ba <b>C</b> giữ tài nguyên chung mà A và B cùng phụ thuộc — kỹ thuật refactor thường gặp ở JS.</p>
+<h3>③ Tài nguyên không được giải phóng (ngôn ngữ có GC)</h3>
+<p>Điển hình: pattern listener mà quên gỡ — bạn JS dev chắc đã quen. <code>DataManager</code> giữ strong reference tới listener nên <code>MyClass</code> không bao giờ bị GC:</p>
+<pre><code><span class="k">class</span> DataManager {
+  <span class="k">private val</span> listeners = mutableListOf&lt;DataListener&gt;()
+  <span class="k">fun</span> registerListener(l: DataListener)   { listeners.add(l) }
+  <span class="k">fun</span> unregisterListener(l: DataListener) { listeners.remove(l) }
+}
+<span class="k">class</span> MyClass : AutoCloseable {                 <span class="c">// ✅ cleanup có chủ đích</span>
+  <span class="k">override fun</span> close() { dataManager.unregisterListener(listener) }
+}
+<span class="c">// Hoặc lưu callback bằng WeakReference để tự xử lý:</span>
+<span class="k">private val</span> listeners = mutableListOf&lt;WeakReference&lt;DataListener&gt;&gt;()</code></pre>
+<p class="muted">Kotlin không có destructor/deinit xác định, nên cần vòng đời cleanup như <code>AutoCloseable</code>.</p>
+<h3>④ Ghi đè thủ công (manual overrides)</h3>
+<p>Ngôn ngữ tự động thường có cách can thiệp thủ công, chủ yếu để tương tác với ngôn ngữ ngoài (C). Dùng sai là nguồn leak khó tìm. Swift có <code>Unmanaged</code>:</p>
+<table class="cmp"><tr><th>Hàm</th><th>Tác dụng</th></tr>
+<tr><td><code>passRetained</code></td><td>Tạo Unmanaged, <b>tăng</b> ref count</td></tr>
+<tr><td><code>passUnretained</code></td><td>Tạo Unmanaged, <b>không</b> tăng</td></tr>
+<tr><td><code>takeRetainedValue</code></td><td>Lấy object, <b>giảm</b> ref count</td></tr>
+<tr><td><code>takeUnretainedValue</code></td><td>Lấy object, không ảnh hưởng</td></tr></table>
+<pre><code><span class="k">let</span> obj = MyObject()                                 <span class="c">// 1</span>
+<span class="k">let</span> unmanaged = Unmanaged.passRetained(obj)            <span class="c">// 2</span>
+<span class="k">let</span> object1 = unmanaged.takeRetainedValue()            <span class="c">// 1  ✅ cân bằng</span>
+
+<span class="k">let</span> u2 = Unmanaged.passUnretained(obj)                  <span class="c">// không đổi</span>
+<span class="k">let</span> o2 = u2.takeRetainedValue()                         <span class="c">// 💥 CRASH: giảm xuống dưới 0</span></code></pre>
+<div class="callout warn"><b class="t">Quy tắc ngón tay cái</b><p>Luôn <b>cân bằng</b> retained/unretained: <code>passRetained</code> thì sau đó <code>takeRetainedValue</code>, và ngược lại. Có thể gọi <code>toOpaque()</code> để lấy con trỏ thô truyền cho C/C++.</p></div>
+<p class="src">Bổ sung: <a href="https://docs.swift.org/swift-book/documentation/the-swift-programming-language/automaticreferencecounting/" target="_blank" rel="noopener">Swift – ARC</a> · <a href="https://en.cppreference.com/w/cpp/memory" target="_blank" rel="noopener">C++ memory (cppreference)</a> · <a href="https://hermesengine.dev/" target="_blank" rel="noopener">Hermes</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="2"><b>1.</b> Vì sao vòng tham chiếu gây leak trong ARC?
+  <div class="opts"><button>GC chạy quá chậm</button><button>Stack quá nhỏ</button><button>Hai object giữ strong reference lẫn nhau nên bộ đếm không bao giờ về 0</button></div>
+  <div class="exp">Giải pháp: weak reference (<code>weak var</code>, <code>std::weak_ptr</code>).</div></div>
+<div class="q" data-ans="1"><b>2.</b> Điểm yếu của Garbage Collector?
+  <div class="opts"><button>Không giải phóng được gì</button><button>Thời điểm chạy không xác định và có thể tạm dừng app</button><button>Không dùng được trong JS</button></div>
+  <div class="exp">Đó là đánh đổi so với ARC (giải phóng ngay, xác định).</div></div>
+<div class="q" data-ans="0"><b>3.</b> <code>std::unique_ptr</code> khác <code>shared_ptr</code> ở chỗ?
+  <div class="opts"><button>Chỉ có một chủ sở hữu; chỉ move, không copy</button><button>Nhanh gấp đôi</button><button>Đếm tham chiếu</button></div>
+  <div class="exp">shared_ptr mới đếm tham chiếu.</div></div>
+<div class="chnav"><a href="chuong-12.html"><small>← Chương 12</small>Đo TTI</a><a class="next" href="chuong-14.html"><small>Chương 14 →</small>Mô hình luồng TurboModules & Fabric</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

@@ -1,0 +1,85 @@
+<span class="kicker">Chương 19 · Phần 3: Bundling · Guide</span>
+<h1>Phân tích kích thước JS bundle</h1>
+<p class="lead">Phần 1–2 chủ yếu cải thiện FPS ở runtime. Phần 3 xử lý thời điểm <b>build</b> để app khởi động nhanh hơn — tức cải thiện <b>TTI</b>. Mở đầu là hiểu: ta đang đóng gói gì và gửi gì cho người dùng.</p>
+
+<h2 id="intro">1. Bundler và JS bundle</h2>
+<p>Giống web, dev RN dùng <b>bundler</b> để biến nhiều file nguồn (TypeScript, HTML, CSS, JPG, MP4…) được import qua một entry file thành định dạng mà JS engine đích hiểu — thường là một file <code>.js</code> cùng tài nguyên khác.</p>
+<ul>
+  <li><b>Metro</b>: bundler mặc định của RN. Hỗ trợ mọi nền tảng, kể cả web nhưng thiếu <b>code splitting</b> và <b>tree-shaking</b>.</li>
+  <li><b>Webpack/Rspack</b> (qua <b>Re.Pack</b>): thay thế Metro, phổ biến ở web.</li>
+  <li><b>Dev</b>: bundle không chứa JS mà lấy từ dev server → Hot Module Replacement / Fast Refresh (cập nhật dưới 1 giây).</li>
+  <li><b>Release</b>: bundle chứa file <code>.jsbundle</code> là <b>Hermes Bytecode</b>, không kết nối dev server. Do script native (Xcode/Gradle) chạy <code>npx react-native bundle</code> rồi đưa qua compiler Hermes.</li>
+</ul>
+
+<h2 id="size">2. Vì sao vẫn phải quan tâm kích thước JS?</h2>
+<p>Bundle gồm code của bạn, code thư viện bên thứ ba và các <b>transitive dependency</b>. Kích thước ít nhiều ảnh hưởng đường khởi tạo của app. Mọi cách làm nhỏ đi đều xoay quanh một ý: <b>bỏ code không cần ở thời điểm đó</b>. Và thời điểm là tất cả:</p>
+<pre><code><span class="k">if</span> (__DEV__) {            <span class="c">// có thể loại bỏ khỏi bản production</span>
+  <span class="c">// ...</span>
+}
+<span class="k">if</span> (Platform.OS === <span class="s">'ios'</span>) {   <span class="c">// có thể loại bỏ khỏi bundle Android</span>
+  <span class="c">// ...</span>
+}</code></pre>
+
+<h2 id="hermes">3. Hermes bytecode thay đổi cuộc chơi</h2>
+<p>Nếu app cập nhật từ 2022 và dùng RN ≥ 0.70, bundle cuối thường <b>không</b> chứa JS thô mà là bytecode do Hermes sinh. (Hermes là engine duy nhất tạo bytecode dùng được trong RN; V8 về mặt kỹ thuật làm được tối ưu ahead-of-time tương tự bằng heap snapshot.)</p>
+<div class="demo" id="pipe">
+  <h4>So sánh · Từ file JS đến khi chạy</h4>
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost on" data-m="web">Web</button><button class="btn ghost" data-m="rn">React Native + Hermes</button></div>
+  <div id="pi-s"></div>
+  <p id="pi-n" class="muted" style="font-size:15px;margin:.6em 0 0"></p>
+</div>
+<p>Vì thế các thủ thuật web — nhất là <b>code splitting</b> hay tối ưu mạnh kích thước bundle ban đầu — không áp dụng trực tiếp: RN không cần tải về (JS đã nằm trong app), và nhờ Hermes còn bỏ qua cả bước nạp vào bộ nhớ và parse.</p>
+<div class="callout warn"><b class="t">Nhưng vẫn quan trọng</b>
+  <p>Chọn thư viện nhỏ hơn, bỏ code cũ, chỉ nạp thư viện cần thiết trên đường khởi tạo. Kích thước bytecode ảnh hưởng kích thước app (tải về/khởi tạo chậm hơn); JS chạy nhiều trên đường khởi tạo ảnh hưởng <b>TTI</b>. Tệ hơn, khi JS này nạp native module sẽ tạo thêm việc cho phía native, làm mất lợi ích <b>lazy loading</b> của TurboModule.</p></div>
+<div class="callout"><b class="t">TurboModule là lazy</b><p>Native Module kiến trúc cũ khởi tạo eager lúc mở app; TurboModule chỉ chạy khi JS gọi tới — cải thiện TTI rõ rệt khi lên New Architecture.</p></div>
+<p><b>Ví dụ:</b> import thư viện component có hàng trăm component nhưng chỉ dùng chục cái, qua barrel file, không tree shaking/Babel plugin tối ưu → mọi component được nạp ngay trên đường khởi tạo; vài cái gọi TurboModule riêng nên các module này cũng khởi tạo sớm thay vì không bao giờ hoặc muộn hơn. (Xem <a href="chuong-22.html">Chương 22</a>.)</p>
+
+<h2 id="tools">4. Công cụ xem bên trong bundle</h2>
+<h3>source-map-explorer</h3>
+<p>Phân tích bất kỳ JS bundle nào có source map qua giao diện web — cho cái nhìn tổng quan những gì tới tay người dùng, dễ thấy "ngoại lai" vô tình lọt vào hay tàn dư tính năng cũ, kể cả kích thước code của chính bạn.</p>
+<pre><code>&gt; npx react-native bundle \
+    --entry-file index.js \
+    --bundle-output output.js \
+    --platform ios \
+    --sourcemap-output output.js.map \
+    --dev false \
+    --minify true
+
+&gt; npx source-map-explorer output.js <span class="h">--no-border-checks</span></code></pre>
+<p>Metro sinh mapping cột/dòng không hợp lệ nên cần cờ <code>--no-border-checks</code>. Tool vẫn dựng được UI nhưng bạn có thể <b>mất tới 30%</b> thông tin → che bớt cơ hội tối ưu. Muốn thêm thông tin, dùng Expo Atlas.</p>
+<h3>Expo Atlas</h3>
+<pre><code>&gt; EXPO_UNSTABLE_ATLAS=true npx expo start --no-dev
+<span class="c"># hoặc</span>
+EXPO_UNSTABLE_ATLAS=true npx expo export
+&gt; npx expo-atlas</code></pre>
+<p>Dành cho dự án Expo, tích hợp sâu vào pipeline Metro. Có thể chạy không cần Expo CLI qua dự án <b>expo-atlas-without-expo</b>.</p>
+
+<h3>Nếu dùng Re.Pack với Rspack/Webpack</h3>
+<p>Hệ công cụ phong phú hơn (Rspack gần ngang hệ Webpack, hiệu năng tốt hơn).</p>
+<div class="demo" data-tabs>
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost" data-t="w">webpack-bundle-analyzer</button><button class="btn ghost" data-t="b">bundle-stats / statoscope</button><button class="btn ghost" data-t="r">Rsdoctor</button></div>
+  <div data-p="w"><p>CLI Rspack hỗ trợ sẵn qua <code>--analyze</code> (dùng webpack-bundle-analyzer bên dưới):</p><pre><code>&gt; rspack build --analyze</code></pre></div>
+  <div data-p="b"><p>Sinh <code>stats.json</code> bằng lệnh <code>bundle</code> của Re.Pack, rồi đưa vào công cụ phân tích. Có thể so sánh hai file stats để thấy bundle tăng/giảm theo thời gian.</p>
+<pre><code>&gt; npx react-native bundle --platform android --entry-file index.js \
+    --dev false --minify true --json stats.json
+&gt; npx bundle-stats --html --json stats.json</code></pre></div>
+  <div data-p="r"><p>Module bundle size của Rsdoctor phân tích đầu ra Rspack: kích thước tài nguyên, <b>package trùng lặp</b>, quan hệ tham chiếu module.</p>
+<pre><code><span class="k">const</span> { RsdoctorRspackPlugin } = require(<span class="s">'@rsdoctor/rspack-plugin'</span>);
+module.exports = {
+  plugins: [
+    process.env.RSDOCTOR &amp;&amp; <span class="k">new</span> RsdoctorRspackPlugin({ <span class="c">/* options */</span> }),
+  ].filter(Boolean),
+};</code></pre><p class="muted">Chạy với biến môi trường <code>RSDOCTOR=true</code> để mở UI.</p></div>
+</div>
+<p class="src">Bổ sung: <a href="https://github.com/danvk/source-map-explorer" target="_blank" rel="noopener">source-map-explorer</a> · <a href="https://docs.expo.dev/guides/analyzing-bundles/" target="_blank" rel="noopener">Expo – Analyzing bundles</a> · <a href="https://re-pack.dev/" target="_blank" rel="noopener">Re.Pack</a> · <a href="https://rsdoctor.dev/" target="_blank" rel="noopener">Rsdoctor</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Hermes bytecode làm bước nào "chuyển" sang build time?
+  <div class="opts"><button>Tải xuống</button><button>Nạp vào bộ nhớ và parse</button><button>Thực thi</button></div>
+  <div class="exp">Vì vậy thủ thuật web như code splitting không áp dụng nguyên xi.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Vì sao <code>source-map-explorer</code> cần <code>--no-border-checks</code> với Metro?
+  <div class="opts"><button>Để chạy nhanh hơn</button><button>Để minify</button><button>Metro tạo mapping dòng/cột không hợp lệ</button></div>
+  <div class="exp">Đổi lại có thể mất ~30% thông tin.</div></div>
+<div class="q" data-ans="0"><b>3.</b> Vì sao JS thừa trên đường khởi tạo hại TTI?
+  <div class="opts"><button>Nó chạy sớm, thậm chí kéo theo khởi tạo native module không cần thiết</button><button>Nó làm tăng FPS</button><button>Nó phải tải qua mạng</button></div>
+  <div class="exp">Phá lợi ích lazy loading của TurboModule.</div></div>

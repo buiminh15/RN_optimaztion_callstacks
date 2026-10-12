@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 16 – Dùng SDK native thay vì web</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html" selected>16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#vigilant">Luôn xem lại dependency</a><a href="#intl-poly">Polyfill Intl</a><a href="#crypto">Thư viện mật mã</a><a href="#nav">Dùng navigation native</a><a href="#native-first">Ưu tiên thư viện có component native</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 16 · Phần 2: Native · Best practice</span>
+<h1>Dùng SDK dành riêng cho React Native thay vì web</h1>
+<p class="lead">Điểm hay của React Native là tận dụng hệ sinh thái JavaScript. Nhưng chạy được cùng đoạn JS như trên trình duyệt không có nghĩa nên làm vậy: môi trường mobile có best practice và ràng buộc riêng.</p>
+
+<h2 id="vigilant">1. Luôn xem lại dependency</h2>
+<p>Bạn phải cảnh giác: rà soát dependency xem còn dùng được/cần thiết không, hoặc có thể thay bằng giải pháp dành riêng nền tảng tốt hơn. Sách đưa ba ví dụ.</p>
+
+<h2 id="intl-poly">2. Polyfill Intl</h2>
+<p>Đối tượng <code>Intl</code> cung cấp so sánh chuỗi, định dạng số, ngày giờ theo ngôn ngữ. Có ở mọi trình duyệt hiện đại và một phần trong Hermes:</p>
+<pre><code><span class="k">const</span> number = <span class="s">123456.789</span>;
+<span class="k">const</span> germanFormat = <span class="k">new</span> Intl.NumberFormat(<span class="s">'de-DE'</span>);
+console.log(germanFormat.format(number)); <span class="c">// 123.456,789</span></code></pre>
+<p>Trong dự án RN thường thấy hàng loạt import polyfill từ <b>Format.JS</b> (bản chỉ-JS của API Intl):</p>
+<pre><code>import <span class="s">'@formatjs/intl-getcanonicallocales/polyfill'</span>;
+import <span class="s">'@formatjs/intl-locale/polyfill'</span>;
+import <span class="s">'@formatjs/intl-numberformat/polyfill'</span>;
+import <span class="s">'@formatjs/intl-numberformat/locale-data/en'</span>;
+import <span class="s">'@formatjs/intl-datetimeformat/polyfill'</span>;
+import <span class="s">'@formatjs/intl-datetimeformat/locale-data/en'</span>;
+import <span class="s">'@formatjs/intl-pluralrules/polyfill'</span>;
+import <span class="s">'@formatjs/intl-relativetimeformat/polyfill'</span>;
+import <span class="s">'@formatjs/intl-displaynames/polyfill'</span>;</code></pre>
+<p>Hermes từng hỗ trợ hạn chế, nhưng đội Hermes đã cải thiện, nên nhiều polyfill giờ có thể bỏ. Bảng hỗ trợ (theo diff trong sách, tại 1/2025):</p>
+<div class="demo" id="intl">
+  <h4>Bảng · Hermes hỗ trợ Intl API nào? (bấm để bật/tắt polyfill tương ứng)</h4>
+  <div id="in-t"></div>
+  <p style="margin:.8em 0 0">Polyfill còn phải import: <b id="in-n"></b></p>
+</div>
+<div class="callout warn"><b class="t">Kiểm tra lại với phiên bản của bạn</b><p>Bảng trong PDF dùng ký hiệu không trích xuất được; mình suy ra từ đoạn diff của sách: các polyfill <code>getcanonicallocales</code>, <code>numberformat</code>, <code>datetimeformat</code> được gỡ, còn <code>locale</code>, <code>pluralrules</code>, <code>relativetimeformat</code>, <code>displaynames</code> được giữ. Hermes tiến bộ liên tục — hãy xem tài liệu Hermes/React Native mới nhất.</p></div>
+<div class="callout"><b class="t">Lợi ích</b><p>Chỉ riêng việc gỡ vài polyfill đã cắt hơn <b>430 kB</b> khỏi JS bundle. Code này được nạp sớm ở entry point nên còn có thể cải thiện <b>TTI</b> — chỉ bằng cách bỏ code không cần.</p></div>
+
+<h2 id="crypto">3. Thư viện mật mã</h2>
+<p>Thay thư viện tính toán nặng bằng bản native. Ví dụ <code>crypto-js</code> (bản JS của crypto Node.js) có thể thay bằng <b>react-native-quick-crypto</b> của Margelo: nhanh hơn tới <b>58 lần</b> nhờ dùng C++ trực tiếp.</p>
+<p>Đặc biệt quan trọng khi cần số ngẫu nhiên an toàn mật mã (<b>CSPRNG</b>), ví dụ sinh seed ví Web3. Không thể dựa vào <code>Math.random()</code> vì không đảm bảo đủ entropy để coi là an toàn.</p>
+
+<h2 id="nav">4. Dùng navigation native</h2>
+<p>React Navigation cho phép trộn navigator JS và native. Chọn JS Stack (linh hoạt tối đa) hay Native Stack (ít linh hoạt hơn nhưng hiệu năng + giao diện native)? Tab cũng tương tự.</p>
+<table class="cmp"><tr><th></th><th>Navigator JS</th><th>Navigator native</th></tr>
+<tr><td>Linh hoạt UI</td><td>Rất cao</td><td>Thấp hơn</td></tr>
+<tr><td>Tải cho JS thread</td><td>Có</td><td><b>Giảm</b> → ít bộ nhớ, mượt hơn</td></tr>
+<tr><td>Cảm giác nền tảng</td><td>Tự mô phỏng</td><td><b>Native feel</b> (header lớn iOS, nút back Android…)</td></tr></table>
+<h3>Native Stack</h3>
+<pre><code><span class="k">import</span> { createNativeStackNavigator } <span class="k">from</span> <span class="s">'@react-navigation/native-stack'</span>;
+
+<span class="k">const</span> MyStack = createNativeStackNavigator({
+  screens: { Home: HomeScreen, Profile: ProfileScreen },
+});</code></pre>
+<p>Dựa trên <b>react-native-screens</b>; API rất giống JS stack nên di chuyển thường không khó.</p>
+<h3>Native Tabs</h3>
+<pre><code><span class="k">import</span> { createNativeBottomTabNavigator } <span class="k">from</span> <span class="s">'@bottom-tabs/react-navigation'</span>;
+
+<span class="k">const</span> MyTabs = createNativeBottomTabNavigator({
+  screens: { Home: HomeScreen, Profile: ProfileScreen },
+});</code></pre>
+<p>Từ dự án <b>react-native-bottom-tabs</b>, API gần như tương thích.</p>
+
+<h2 id="native-first">5. Ưu tiên thư viện có component native</h2>
+<ul>
+  <li><b>React Native Screens</b> — nền tảng của Native Stack.</li>
+  <li><b>Zeego</b> — menu native đẹp cho RN + Web, lấy cảm hứng từ Radix UI.</li>
+  <li><b>React Native Slider</b> — slider dùng primitive native.</li>
+  <li><b>React Native Date Picker</b> — date picker dùng primitive native.</li>
+</ul>
+<div class="callout"><b class="t">Bảo vệ người dùng</b><p>Không phải lúc nào cũng thay được view JS linh hoạt vô hạn bằng bản native do yêu cầu thiết kế. Nếu có phương án UX tốt hơn, hiệu năng hơn nhưng cần chỉnh nhẹ thiết kế, đừng ngại <b>lên tiếng</b>. UX tốt là cuộc đối thoại giữa sáng tạo của designer và những gì kỹ thuật làm được. Suy cho cùng ta làm tất cả vì người dùng.</p></div>
+<p class="src">Bổ sung: <a href="https://reactnavigation.org/docs/native-stack-navigator/" target="_blank" rel="noopener">Native Stack Navigator</a> · <a href="https://github.com/margelo/react-native-quick-crypto" target="_blank" rel="noopener">react-native-quick-crypto</a> · <a href="https://oss.callstack.com/react-native-bottom-tabs/" target="_blank" rel="noopener">react-native-bottom-tabs</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="2"><b>1.</b> Vì sao nên gỡ polyfill Intl mà Hermes đã hỗ trợ?
+  <div class="opts"><button>Để tăng độ phức tạp</button><button>Vì chúng gây crash</button><button>Giảm kích thước JS bundle (~430 kB) và có thể cải thiện TTI</button></div>
+  <div class="exp">Code polyfill được nạp ở entry point nên ảnh hưởng khởi động.</div></div>
+<div class="q" data-ans="1"><b>2.</b> Ưu điểm chính của Native Stack so với JS Stack?
+  <div class="opts"><button>Linh hoạt hơn</button><button>Giảm tải JS thread và có cảm giác native</button><button>Không cần cài thêm gì</button></div>
+  <div class="exp">Đổi lại ít linh hoạt hơn.</div></div>
+<div class="q" data-ans="0"><b>3.</b> Vì sao không dùng <code>Math.random()</code> để sinh seed ví?
+  <div class="opts"><button>Không đảm bảo đủ entropy cho CSPRNG</button><button>Quá chậm</button><button>Không có trong Hermes</button></div>
+  <div class="exp">Cần số ngẫu nhiên an toàn mật mã.</div></div>
+<div class="chnav"><a href="chuong-15.html"><small>← Chương 15</small>View Flattening</a><a class="next" href="chuong-17.html"><small>Chương 17 →</small>Làm native module nhanh hơn</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

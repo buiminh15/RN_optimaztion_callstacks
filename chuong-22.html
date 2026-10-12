@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 22 – Tránh barrel exports</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html" selected>22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#what">Barrel file là gì?</a><a href="#problems">Ba vấn đề</a><a href="#fix">Giải pháp: đừng dùng barrel import</a><a href="#auto">Xử lý tự động (nếu không muốn sửa tay)</a><a href="#datefns">Ví dụ thực tế: date-fns</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 22 · Phần 3: Bundling · Best practice</span>
+<h1>Tránh barrel exports</h1>
+<p class="lead">Barrel file gộp nhiều module vào một điểm export để import cho tiện. Nhưng sự tiện lợi này có giá: bundle phình to, khởi động chậm, và phụ thuộc vòng tròn.</p>
+
+<h2 id="what">1. Barrel file là gì?</h2>
+<pre><code><span class="c">// components/index.ts — một "index file"</span>
+<span class="k">export</span> { Button } <span class="k">from</span> <span class="s">'./Button'</span>;
+<span class="k">export</span> { Card }   <span class="k">from</span> <span class="s">'./Card'</span>;
+<span class="k">export</span> { Modal }  <span class="k">from</span> <span class="s">'./Modal'</span>;
+
+<span class="c">// nơi dùng</span>
+<span class="k">import</span> { Button, Card, Modal, Sidebar } <span class="k">from</span> <span class="s">'./components'</span>;</code></pre>
+
+<h2 id="problems">2. Ba vấn đề</h2>
+<div class="cards">
+  <div class="card"><span class="pill">Kích thước</span><h3 style="margin-top:.4em">Bundle size overhead</h3><p>Metro đưa <b>mọi</b> module trong barrel vào bundle dù bạn chỉ dùng một. Import mỗi <code>Button</code> vẫn kéo theo <code>Card</code>, <code>Modal</code>…</p></div>
+  <div class="card"><span class="pill">Thời gian chạy</span><h3 style="margin-top:.4em">Runtime overhead</h3><p>Mọi module trong barrel phải được <b>evaluate</b> trước khi trả về module cần → xử lý thừa → ảnh hưởng <b>TTI</b>.</p></div>
+  <div class="card"><span class="pill">Phát triển</span><h3 style="margin-top:.4em">Circular dependency</h3><p>Barrel dễ tạo phụ thuộc vòng. Hệ quả: phá HMR, buộc <b>reload toàn bộ</b> mỗi khi module trong vòng đổi. Metro cảnh báo khi phát hiện.</p></div>
+</div>
+
+<div class="demo" id="barrel">
+  <h4>Demo · Bundle chứa gì?</h4>
+  <p class="d">Tick các component bạn thực sự dùng, rồi so sánh hai cách import. (Kích thước là số minh họa.)</p>
+  <div class="row" id="br-c"></div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><span class="pill" style="background:var(--bad-soft);color:var(--bad)">Barrel</span><code style="display:block;margin:.5em 0">import { … } from './components'</code><div id="br-a"></div><div class="stat" id="br-as" style="margin-top:.4em"></div></div>
+    <div class="card"><span class="pill" style="background:var(--good-soft);color:var(--good)">Import trực tiếp</span><code style="display:block;margin:.5em 0">import X from './components/X'</code><div id="br-b"></div><div class="stat" id="br-bs" style="margin-top:.4em"></div></div>
+  </div>
+</div>
+
+<h2 id="fix">3. Giải pháp: đừng dùng barrel import</h2>
+<pre><code><span class="c">// ❌ import từ barrel</span>
+<span class="k">import</span> { Button, Card, Modal, Sidebar } <span class="k">from</span> <span class="s">'./components'</span>;
+
+<span class="c">// ✅ import từ từng file</span>
+<span class="k">import</span> Button <span class="k">from</span> <span class="s">'./components/Button'</span>;
+<span class="k">import</span> Card   <span class="k">from</span> <span class="s">'./components/Card'</span>;
+<span class="k">import</span> Modal  <span class="k">from</span> <span class="s">'./components/Modal'</span>;</code></pre>
+<p>Để giữ kỷ luật này cả dự án, thêm ESLint plugin: <code>eslint-plugin-no-barrel-imports</code>.</p>
+<div class="callout warn"><b class="t">Một ngoại lệ hữu ích</b><p>Vài thư viện (ví dụ <b>React Native Paper</b>) cung cấp sẵn Babel plugin loại bỏ import không dùng, nên bạn không phải lo.</p></div>
+
+<h2 id="auto">4. Xử lý tự động (nếu không muốn sửa tay)</h2>
+<p>Cách trên không "đẹp" lắm. Có công cụ làm tự động:</p>
+<ul>
+  <li><b>Expo SDK 52</b> thêm hỗ trợ <i>thử nghiệm</i> tree shaking, tự tối ưu barrel imports — chỉ module thực sự dùng mới vào bundle.</li>
+  <li><b>metro-serializer-esbuild</b> (rnx-kit): cho ESBuild — cũng hỗ trợ tree shaking — tiếp quản việc bundling của Metro.</li>
+  <li><b>Webpack/Rspack</b>: tree shaking nâng cao, loại export không dùng khỏi barrel.</li>
+</ul>
+<p class="muted">(Xem thêm <a href="chuong-23.html">Chương 23</a> về tree shaking.)</p>
+
+<h2 id="datefns">5. Ví dụ thực tế: date-fns</h2>
+<p>Thư viện xử lý ngày giờ nổi tiếng, được thiết kế để hỗ trợ import submodule:</p>
+<pre><code><span class="c">// ❌ nhập cả thư viện</span>
+<span class="k">import</span> { format, addDays, isToday } <span class="k">from</span> <span class="s">'date-fns'</span>;
+
+<span class="c">// ✅ chỉ lấy phần cần</span>
+<span class="k">import</span> format  <span class="k">from</span> <span class="s">'date-fns/format'</span>;
+<span class="k">import</span> addDays <span class="k">from</span> <span class="s">'date-fns/addDays'</span>;
+<span class="k">import</span> isToday <span class="k">from</span> <span class="s">'date-fns/isToday'</span>;</code></pre>
+<div class="callout"><b class="t">Luôn đo</b><p>Xác nhận tác động lên JS bundle cuối cùng bằng các công cụ ở <a href="chuong-19.html">Chương 19</a>. Lưu ý các phiên bản mới của date-fns (v3+) có thể đã khuyến nghị cú pháp import khác — kiểm tra tài liệu phiên bản bạn dùng.</p></div>
+<p class="src">Bổ sung: <a href="https://github.com/NiGhTTraX/eslint-plugin-no-barrel-imports" target="_blank" rel="noopener">eslint-plugin-no-barrel-imports</a> · <a href="https://docs.expo.dev/guides/tree-shaking/" target="_blank" rel="noopener">Expo – Tree shaking</a> · <a href="https://microsoft.github.io/rnx-kit/docs/tools/metro-serializer-esbuild" target="_blank" rel="noopener">metro-serializer-esbuild</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Tác hại "runtime" của barrel import?
+  <div class="opts"><button>App crash khi khởi động</button><button>Mọi module trong barrel phải được evaluate trước khi trả module cần</button><button>Mất kết nối mạng</button></div>
+  <div class="exp">Làm tăng thời gian khởi động (TTI).</div></div>
+<div class="q" data-ans="0"><b>2.</b> Circular dependency do barrel gây hại gì cho DX?
+  <div class="opts"><button>Phá HMR, buộc reload toàn bộ</button><button>Tăng FPS</button><button>Không gì cả</button></div>
+  <div class="exp">Metro còn cảnh báo khi phát hiện.</div></div>
+<div class="q" data-ans="2"><b>3.</b> Cách ép cả team không viết barrel import?
+  <div class="opts"><button>Nhắc nhau trong stand-up</button><button>Xóa node_modules</button><button>ESLint plugin <code>no-barrel-imports</code></button></div>
+  <div class="exp">Lint tự động bắt lỗi trong CI/IDE.</div></div>
+<div class="chnav"><a href="chuong-21.html"><small>← Chương 21</small>Kích thước thật của thư viện bên thứ ba</a><a class="next" href="chuong-23.html"><small>Chương 23 →</small>Thử Tree Shaking</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

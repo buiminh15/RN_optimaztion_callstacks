@@ -1,0 +1,65 @@
+<span class="kicker">Chương 14 · Phần 2: Native · Guide</span>
+<h1>Mô hình luồng của TurboModules và Fabric</h1>
+<p class="lead">Muốn viết native module hiệu quả, bạn phải biết code của mình chạy trên luồng nào và vì sao. Chương này đi theo vòng đời một native module — khởi tạo, gọi hàm, hủy — rồi sang Native Views (Fabric).</p>
+
+<h2 id="threads">1. Các luồng có sẵn</h2>
+<div class="cards">
+  <div class="card"><span class="pill">Main / UI thread</span><p>Xử lý UI, giữ app phản hồi. Giống mọi app native.</p></div>
+  <div class="card"><span class="pill">JavaScript thread</span><p>Chạy JavaScript (không độc quyền).</p></div>
+  <div class="card"><span class="pill">Native modules thread</span><p>Pool dùng chung do React Native cấp riêng cho native module (<code>mqt_v_native</code>).</p></div>
+</div>
+<p>Ngoài ra bạn, renderer hoặc module bên thứ ba có thể tạo thêm thread nền (xem <a href="chuong-17.html">Chương 17</a>).</p>
+
+<h2 id="turbo">2. Vòng đời TurboModule: ai chạy ở luồng nào?</h2>
+<p>Sách dùng debugger của Xcode và Android Studio để xem từng phương thức được gọi trên luồng nào. Bấm từng sự kiện:</p>
+<div class="demo" id="thr14">
+  <h4>Khám phá · Phương thức này chạy ở thread nào?</h4>
+  <div class="row" id="t14-b"></div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><span class="pill">iOS</span><div class="stat" style="font-size:1.3rem;margin-top:.4em" id="t14-i"></div></div>
+    <div class="card"><span class="pill">Android</span><div class="stat" style="font-size:1.3rem;margin-top:.4em" id="t14-a"></div></div>
+  </div>
+  <p id="t14-n" style="margin:.8em 0 0"></p>
+</div>
+
+<h3>init — khác nhau giữa hai nền tảng</h3>
+<p>Trên Android, <code>init</code> chạy ở JS thread (<code>mqt_v_js</code>); trên iOS lại chạy ở <b>main thread</b>. Lý do: nếu bạn override <code>init</code> ở iOS, RN <i>giả định</i> bạn có thể đụng tới UIKit (không thread-safe) nên gọi nó trên main queue. Bỏ giả định đó thì module được khởi tạo ở JS thread, giống Android — nhưng đổi nội bộ RN đòi hỏi build từ source; không khuyến khích cho production nhưng là bài học tốt ở môi trường dev.</p>
+<h3>Eager init (chỉ Android)</h3>
+<p>Mặc định module khởi tạo <b>lười</b>. Để khởi tạo sớm, đổi tham số thứ tư <code>needsEagerInit</code> sang <code>true</code> trong package:</p>
+<pre><code>moduleInfos[AwesomeLibraryModule.NAME] = ReactModuleInfo(
+  AwesomeLibraryModule.NAME, AwesomeLibraryModule.NAME,
+  <span class="k">false</span>, <span class="c">// canOverrideExistingModule</span>
+  <span class="h">true</span>,  <span class="c">// needsEagerInit  ← đổi thành true</span>
+  <span class="k">false</span>, <span class="c">// isCxxModule</span>
+  <span class="k">true</span>   <span class="c">// isTurboModule</span>
+)</code></pre>
+<p>Kết quả: <code>init</code> giờ chạy ở <code>mqt_v_native</code> (thread riêng cho TurboModules). Nếu bạn định truy cập instance JavaScript tại đây, phải dùng <b>JavaScript CallInvoker</b> để lên lịch lời gọi lên JS thread.</p>
+
+<h3>Gọi hàm đồng bộ (sync)</h3>
+<p>Hàm sync, ví dụ <code>multiply</code>, được gọi trên <b>JS thread</b> — hợp lý vì ta muốn dừng JS đợi giá trị trả về. Nên cực kỳ cẩn thận:</p>
+<pre><code>@objc <span class="k">func</span> multiply(_ a: Double, b: Double) -&gt; NSNumber {
+  Thread.sleep(forTimeInterval: <span class="s">20</span>)   <span class="c">// ❌ chặn JS thread 20 giây</span>
+  <span class="k">return</span> a * b <span class="k">as</span> NSNumber
+}</code></pre>
+<p>Hàm "vô hại" này đóng băng toàn bộ tương tác JS suốt 20 giây — cả app như treo.</p>
+
+<h3>Gọi hàm bất đồng bộ (async)</h3>
+<p>Giống <code>await fetch</code> trên web: lời gọi được giao cho tầng native và xử lý ngoài luồng JS chính — ở đây là <b>native modules thread</b>. Ví dụ <code>multiplyOnBackgroundThread</code> chạy ở Turbo Modules thread, giải phóng JS thread. Nhưng thread này <b>dùng chung</b> cho mọi module nên có thể bận; khi đó hãy tạo thread riêng.</p>
+<h3>Invalidate (hủy)</h3>
+<p>Xảy ra khi instance RN bị phá, ví dụ reload Metro. iOS: module phải tuân theo protocol <code>RCTInvalidating</code> và hàm được gọi ở Turbo Modules thread. Android: thread không có tên rõ ràng (sinh tự động) — theo source, đó là thread do <code>ReactHost</code> tạo (<code>pool-2-thread-1</code>).</p>
+
+<h2 id="fabric">3. Native Views (Fabric)</h2>
+<p>Dễ hơn nhiều: hệ điều hành yêu cầu cập nhật view trên <b>main thread</b>; UIKit không thread-safe, nên gần như mọi thứ tạo/chỉnh view xảy ra ở main thread. Cả iOS và Android: view khởi tạo ở main thread; prop updater (<code>updateProps</code> / props setter) cũng ở main thread — dù ở JS bạn thao tác props trên JS thread — vì RN giả định hàm này thao tác trực tiếp view native.</p>
+<div class="callout"><b class="t">Yoga</b><p><b>Yoga</b> là engine layout đa nền tảng (Flexbox + định vị tuyệt đối) tính layout cho <b>React Shadow Tree</b> — biểu diễn nội bộ bằng C++ của cây component. Không gắn riêng với RN: nhiều app native dùng, và có benchmark còn nhanh hơn auto-layout của iOS. Thao tác trên cây Yoga (ví dụ <code>yoga::Node::measure</code>) chạy ở <b>JS thread</b>.</p></div>
+<p class="src">Bổ sung: <a href="https://reactnative.dev/docs/the-new-architecture/pure-cxx-modules" target="_blank" rel="noopener">New Architecture docs</a> · <a href="https://www.yogalayout.dev/" target="_blank" rel="noopener">Yoga</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Hàm native <b>đồng bộ</b> chạy ở thread nào?
+  <div class="opts"><button>Native modules thread</button><button>JS thread (nên không được chặn lâu)</button><button>UI thread</button></div>
+  <div class="exp">JS phải đợi giá trị trả về nên hàm sync chạy ngay trên JS thread.</div></div>
+<div class="q" data-ans="0"><b>2.</b> Vì sao <code>init</code> ở iOS chạy trên main thread?
+  <div class="opts"><button>RN giả định module override init có thể dùng UIKit, vốn không thread-safe</button><button>Vì Swift bắt buộc</button><button>Do Hermes</button></div>
+  <div class="exp">Nhờ đó tránh đụng UIKit từ thread khác.</div></div>
+<div class="q" data-ans="2"><b>3.</b> <code>updateProps</code> của Native View chạy ở?
+  <div class="opts"><button>JS thread</button><button>Native modules thread</button><button>Main thread</button></div>
+  <div class="exp">Vì nó thao tác trực tiếp view native.</div></div>

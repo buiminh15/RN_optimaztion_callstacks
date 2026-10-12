@@ -1,0 +1,101 @@
+<span class="kicker">Chương 20 · Phần 3: Bundling · Guide</span>
+<h1>Phân tích kích thước app bundle</h1>
+<p class="lead">Kích thước app quyết định việc người dùng có cài hay không, nhất là khi dùng dữ liệu di động. Chương này giới thiệu các định dạng đóng gói và công cụ đo kích thước cho Android và iOS.</p>
+
+<h2 id="why">1. Vì sao quan tâm kích thước app?</h2>
+<p>Google từng thử nghiệm mối liên hệ giữa kích thước APK và số lượt tải: cứ <b>tăng 6 MB</b>, tỷ lệ chuyển đổi cài đặt giảm <b>1%</b>.</p>
+<div class="demo" id="sz">
+  <h4>Demo · Mỗi 6 MB làm mất ~1% lượt cài</h4>
+  <div class="row"><span>Tăng kích thước:</span><input type="range" id="sz-r" min="0" max="60" value="12" style="flex:1;min-width:140px"><b id="sz-v"></b></div>
+  <p style="margin:.6em 0 0">≈ mất <b id="sz-l" style="font-size:1.4rem"></b> tỷ lệ chuyển đổi cài đặt (ước lượng tuyến tính từ con số của Google).</p>
+</div>
+<p>Hai loại kích thước:</p>
+<div class="grid2">
+  <div class="card"><span class="pill">Network-bound</span><p><b>Download size</b>, <b>update size</b> — dữ liệu <i>nén</i> truyền qua mạng.</p></div>
+  <div class="card"><span class="pill">Storage-bound</span><p><b>Install size</b>, <b>storage size</b> — dung lượng <i>giải nén</i> của app và cache trên thiết bị.</p></div>
+</div>
+
+<h2 id="packaging">2. Nền: các định dạng đóng gói</h2>
+<div class="demo" data-tabs>
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost" data-t="a">Android</button><button class="btn ghost" data-t="i">iOS</button></div>
+  <div data-p="a">
+    <p>Hai định dạng: <b>APK</b> và <b>AAB</b>, chứa code native cho nhiều kiến trúc:</p>
+    <table class="cmp"><tr><th>ABI</th><th>Dành cho</th></tr>
+    <tr><td><code>armeabi-v7a</code></td><td>ARM cũ, cấp thấp</td></tr><tr><td><code>arm64-v8a</code></td><td>ARM 64-bit, hiệu năng tốt hơn</td></tr>
+    <tr><td><code>x86</code></td><td>Thiết bị Intel</td></tr><tr><td><code>x86_64</code></td><td>Intel 64-bit</td></tr></table>
+    <p>Cấu hình qua <code>reactNativeArchitectures</code> trong <code>android/gradle.properties</code>. Build nhiều kiến trúc làm build lâu hơn; khi phát triển với RN CLI, thêm <code>--activeArchOnly</code> vào <code>run-android</code> để nhanh hơn.</p>
+    <ul><li><b>APK</b>: định dạng truyền thống (phát triển, test, phân phối ngoài Play Store). Thực chất là file ZIP. Không tối ưu theo kiến trúc nên thường gói nhiều kiến trúc → to.</li>
+    <li><b>AAB</b>: định dạng mới của Google, chứa những gì cần để sinh APK <i>theo yêu cầu</i>. <b>Bắt buộc</b> cho Google Play; Play tạo APK tối ưu cho từng thiết bị → giảm kích thước tải.</li></ul>
+    <p><b>Thư viện:</b> <code>.a</code> (C/C++, tĩnh), <code>.aar</code> (Android Archive: class + tài nguyên, tĩnh), <code>.so</code> (shared, động).</p></div>
+  <div data-p="i">
+    <p>Hai định dạng: <b>IPA</b> và <b>APP</b>; kiến trúc: <code>arm64</code> (thiết bị hiện đại) và <code>x86_64</code> (simulator trên macOS).</p>
+    <ul><li><b>IPA</b>: để phân phối qua App Store, ad hoc, enterprise. Là archive chứa mọi thứ để cài app. (Vui: đổi <code>.ipa</code> thành <code>.zip</code> để xem bên trong; <code>.apk</code> cũng vậy!) App Store dùng nó để <b>app thinning</b>: App Slicing (chỉ gửi tài nguyên cần cho thiết bị), On-Demand Resources, Bitcode.</li>
+    <li><b>APP</b>: thư mục chứa tài nguyên, binary, metadata — dùng khi phát triển trên simulator, không để phân phối.</li></ul>
+    <p><b>Thư viện:</b> <code>.a</code> (tĩnh), <code>.dylib</code> (động), <code>.framework</code> (động, một nền tảng), <code>.xcframework</code> (động, nhiều nền tảng/kiến trúc).</p>
+    <div class="callout warn"><b class="t">Tĩnh hay động?</b><p>Apple khuyên tránh thư viện động khi có thể để khởi động nhanh hơn (iOS nạp mọi dynamic library trên đường khởi động). Nhưng nếu chia sẻ một framework cho nhiều target (app, share extension, widget), link tĩnh sẽ <b>nhân bản</b> framework cho mỗi target (3 target = 3 bản). Khi đó chuyển sang link động loại bỏ trùng lặp — Emerge Tools có bài minh họa trực quan.</p></div></div>
+</div>
+<div class="callout"><b class="t">Tĩnh vs động</b><p><b>Tĩnh</b>: gộp vào code app lúc biên dịch → một file thực thi; đơn giản, nhất quán, nhưng APK lớn hơn, build lại tốn hơn, có thể tốn RAM hơn do nạp cùng code nhiều lần. <b>Động</b>: nạp lúc chạy, chia sẻ giữa chương trình, cập nhật không cần biên dịch lại.</p></div>
+
+<h2 id="android">3. Đo kích thước Android: Ruler (Spotify)</h2>
+<p>Plugin Gradle dễ dùng: phân tích bundle debug/release cho từng kiến trúc.</p>
+<ol class="steps">
+  <li><b>Thêm vào <code>build.gradle</code> cấp project:</b>
+<pre><code>buildscript {
+  dependencies {
+    classpath(<span class="s">"com.spotify.ruler:ruler-gradle-plugin:2.0.0-beta-3"</span>)
+  }
+}</code></pre></li>
+  <li><b>Áp dụng plugin</b> trong <code>app/build.gradle</code>: <code>apply plugin: "com.spotify.ruler"</code></li>
+  <li><b>Cấu hình</b> kiến trúc, locale, mật độ màn hình, SDK:
+<pre><code>ruler {
+  abi.set(<span class="s">"arm64-v8a"</span>)      <span class="c">// ABI = Application Binary Interface</span>
+  locale.set(<span class="s">"en"</span>)
+  screenDensity.set(<span class="s">480</span>)
+  sdkVersion.set(<span class="s">34</span>)
+}</code></pre></li>
+  <li><b>Chạy task</b> mới <code>analyzeDebugBundle</code> / <code>analyzeReleaseBundle</code>:
+<pre><code>&gt; cd android
+&gt; ./gradlew analyzeReleaseBundle
+<span class="c"># → Wrote HTML report to .../android/app/build/reports/ruler/release/report.html</span></code></pre></li>
+</ol>
+<p>Báo cáo cho <b>download size</b> và <b>install size</b>, kèm bảng phân rã các thành phần nội bộ/bên ngoài từ lớn đến nhỏ.</p>
+<div class="callout"><b class="t">Ví dụ của sách</b><p>App mẫu tối ưu bằng R8: download <b>6,3 MB</b>. Cùng app không có tối ưu build-time: <b>9,5 MB</b>. (Xem <a href="chuong-25.html">Chương 25</a>.)</p></div>
+<h3>Kiểm tra kích thước trong CI</h3>
+<p>Lý tưởng là tự động theo dõi kích thước và, ví dụ, bình luận lên PR GitHub. Ruler cho đặt ngưỡng và làm fail build khi app quá to:</p>
+<pre><code>ruler {
+  verification {
+    downloadSizeThreshold = <span class="s">20</span> * <span class="s">1024</span> * <span class="s">1024</span>   <span class="c">// 20 MB</span>
+    installSizeThreshold  = <span class="s">50</span> * <span class="s">1024</span> * <span class="s">1024</span>   <span class="c">// 50 MB</span>
+  }
+}</code></pre>
+
+<h2 id="ios">4. Đo kích thước iOS</h2>
+<ul>
+  <li><b>App Store Connect</b> (hoặc TestFlight): chính xác nhất — kích thước từng biến thể và cảnh báo vượt giới hạn tải qua dữ liệu di động. Bản TestFlight to hơn App Store (có dữ liệu test). Sau xử lý của App Store (thêm DRM, nén lại) kích thước cuối có thể tăng nhẹ so với binary tải lên — bình thường.</li>
+  <li><b>Xcode</b> (lúc phát triển): báo cáo ước lượng gần đúng.</li>
+</ul>
+<ol class="steps">
+  <li>Tạo <b>IPA đã ký</b> trong Xcode.</li>
+  <li>Ở Organizer: <b>Distribute App</b> → <b>Custom</b> → chọn kiểu phân phối → ở <b>App Thinning</b> chọn <i>"All compatible device variants"</i>. (Tương đương trong <code>ExportOptions.plist</code>: <code>&lt;key&gt;thinning&lt;/key&gt;&lt;string&gt;&amp;lt;thin-for-all-variants&amp;gt;&lt;/string&gt;</code> nếu chạy bằng <code>xcodebuild</code>.)</li>
+  <li>Thư mục xuất gồm: IPA <b>universal</b> (mọi biến thể, cho thiết bị cũ), IPA <b>thinned</b> cho từng biến thể, và file <b>App Thinning Size Report.txt</b>.</li>
+</ol>
+<pre><code>App Thinning Size Report for All Variants of SampleApp
+Variant: SampleApp-FB829A90-....ipa
+App size: 3,5 MB compressed, 10,6 MB uncompressed</code></pre>
+<p><b>Compressed</b> = download size; <b>uncompressed</b> = install size trên thiết bị.</p>
+
+<h2 id="emerge">5. Emerge Tools (trả phí, dùng thử 14 ngày)</h2>
+<p>Tác giả không có liên hệ tài chính với Emerge Tools nhưng dùng thường xuyên. Upload IPA/APK/AAB, dùng <b>X-Ray</b> hoặc <b>Breakdown</b> để xem thông tin nhị phân dưới dạng các ô chữ nhật bấm được (như source-map-explorer, nhưng cho binary Android/iOS).</p>
+<div class="callout warn"><b class="t">Cẩn thận với "insight"</b><p>Công cụ cũng đưa gợi ý nhưng chưa đáng tin hoàn toàn — chẳng hạn nó từng đề xuất loại bỏ cả engine Hermes, điều sẽ làm app hỏng. Không phải insight nào cũng đáng làm theo.</p></div>
+<p class="src">Bổ sung: <a href="https://github.com/spotify/ruler" target="_blank" rel="noopener">Spotify Ruler</a> · <a href="https://developer.apple.com/documentation/xcode/reducing-your-app-s-size" target="_blank" rel="noopener">Apple – Reducing app size</a> · <a href="https://www.emergetools.com/" target="_blank" rel="noopener">Emerge Tools</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="2"><b>1.</b> Định dạng nào Google Play bắt buộc?
+  <div class="opts"><button>APK</button><button>IPA</button><button>AAB</button></div>
+  <div class="exp">Play dùng AAB để sinh APK tối ưu cho từng thiết bị.</div></div>
+<div class="q" data-ans="0"><b>2.</b> Download size khác install size ở đâu?
+  <div class="opts"><button>Download là dữ liệu nén qua mạng; install là dung lượng giải nén trên máy</button><button>Hoàn toàn giống nhau</button><button>Download luôn lớn hơn</button></div>
+  <div class="exp">Hai loại kích thước ảnh hưởng người dùng theo cách khác nhau.</div></div>
+<div class="q" data-ans="1"><b>3.</b> Cách tự động kiểm soát kích thước app ở Android?
+  <div class="opts"><button>Xóa tài nguyên thủ công mỗi tuần</button><button>Đặt <code>verification</code> threshold trong Ruler cho CI</button><button>Chỉ dùng debug build</button></div>
+  <div class="exp">Build sẽ fail khi vượt ngưỡng.</div></div>

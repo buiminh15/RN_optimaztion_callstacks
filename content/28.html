@@ -1,0 +1,21 @@
+<span class="kicker">Phụ lục</span>
+<h1>Thư viện và công cụ được nhắc trong sách</h1>
+<p class="lead">Bảng tra nhanh gom mọi công cụ xuất hiện trong cuốn sách, nhóm theo mục đích. Gõ vào ô tìm kiếm để lọc.</p>
+
+<div class="demo">
+  <input type="text" class="tin" id="ref-q" placeholder="Tìm công cụ… (ví dụ: bundle, memory, list)" autocomplete="off">
+  <div id="ref-l" style="margin-top:12px"></div>
+</div>
+<h2 id="how">Cách dùng bảng này</h2>
+<p>Mỗi dòng có tên công cụ, mô tả ngắn và chương liên quan. Bấm số chương để nhảy tới nội dung chi tiết.</p>
+
+<h2 id="timeline">Quy trình tối ưu gợi ý (tóm tắt cả sách)</h2>
+<ol class="steps">
+  <li><b>Xác định vấn đề bằng số liệu:</b> TTI và FPS (<a href="chuong-1.html">Ch.1</a>, <a href="chuong-2.html">Ch.2</a>, <a href="chuong-12.html">Ch.12</a>).</li>
+  <li><b>Phía JS trước:</b> profile React/JS, giảm re-render, dùng list chuyên dụng, animation trên UI thread (<a href="chuong-2.html">Ch.2</a>–<a href="chuong-9.html">9</a>).</li>
+  <li><b>Phía native:</b> profile bằng Instruments/Android Studio, hiểu luồng, bộ nhớ, flattening, SDK native (<a href="chuong-10.html">Ch.10</a>–<a href="chuong-18.html">18</a>).</li>
+  <li><b>Build time:</b> giảm bundle JS/app, bỏ barrel, tree shaking, R8, assets native, tắt nén bundle (<a href="chuong-19.html">Ch.19</a>–<a href="chuong-27.html">27</a>).</li>
+  <li><b>Đo lại.</b> Luôn đo trước và sau; đo ở bản không-dev, thiết bị yếu nhất, cold start.</li>
+</ol>
+<div class="callout"><b class="t">Tinh thần của cả cuốn sách</b><p>Đừng tối ưu mù. Dữ liệu từ profiler quyết định bạn nên sửa gì; và mỗi thay đổi đều phải được kiểm chứng bằng số đo.</p></div>
+<p class="src">Nội dung phụ lục dịch/tóm tắt từ mục "Libraries and Tools Mentioned in This Guide" (tr. 179–181) và phần "About the authors" của sách do đội ngũ Callstack biên soạn.</p>

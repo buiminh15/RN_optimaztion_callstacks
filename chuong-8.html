@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 8 – React Compiler</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html" selected>8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#what">React Compiler là gì?</a><a href="#setup">Chuẩn bị &amp; cài đặt</a><a href="#how">Compiler biến code của bạn thành gì?</a><a href="#faq">Hỏi nhanh</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 8 · Phần 1: JavaScript · Best practice</span>
+<h1>React Compiler</h1>
+<p class="lead">Phần lớn vấn đề hiệu năng RN đến từ re-render thừa. Memo bằng tay làm code khó đọc. React Compiler — công cụ của team React core — tự memoize lúc build.</p>
+
+<h2 id="what">1. React Compiler là gì?</h2>
+<p>Là công cụ phân tích cấu trúc component ở <b>build time</b> và tự áp dụng memoization để giảm re-render, thay cho <code>React.memo</code>, <code>useMemo</code>, <code>useCallback</code> viết tay.</p>
+<div class="callout warn"><b class="t">Mốc thời gian</b><p>Khi sách viết (tháng 1/2025), compiler còn ở <b>beta</b>, Meta đã dùng ở production. Việc bạn dùng được hay không phụ thuộc code tuân thủ <b>Rules of React</b> đến đâu. Ở thời điểm bạn đọc, hãy kiểm tra bản ổn định mới nhất và tài liệu chính thức vì cách cài đặt đã được đơn giản hóa (xem mục bổ sung cuối chương).</p></div>
+
+<h2 id="setup">2. Chuẩn bị &amp; cài đặt</h2>
+<h3>Bước 1 — ESLint plugin (nên làm ngay cả khi chưa dùng compiler)</h3>
+<p>Phát hiện vi phạm Rules of React và cảnh báo những thứ cản trở tối ưu — cải thiện chất lượng code và giúp chuyển đổi suôn sẻ.</p>
+<pre><code>&gt; npm install -D eslint-plugin-react-compiler@beta
+
+<span class="c">// eslint.config.js</span>
+<span class="k">import</span> reactCompiler <span class="k">from</span> <span class="s">'eslint-plugin-react-compiler'</span>
+<span class="k">export default</span> [{
+  plugins: { <span class="s">'react-compiler'</span>: reactCompiler },
+  rules:   { <span class="s">'react-compiler/react-compiler'</span>: <span class="s">'error'</span> },
+}]</code></pre>
+<h3>Bước 2 — Babel plugin</h3>
+<pre><code>&gt; npm install -D babel-plugin-react-compiler@beta
+
+<span class="c">// babel.config.js</span>
+<span class="k">const</span> ReactCompilerConfig = {
+  target: <span class="s">'19'</span>   <span class="c">// chọn theo phiên bản react của bạn</span>
+};
+module.exports = <span class="k">function</span> () {
+  <span class="k">return</span> { plugins: [[<span class="s">'babel-plugin-react-compiler'</span>, ReactCompilerConfig]] };
+};</code></pre>
+<ul>
+  <li>Tương thích React 17+ nhưng hiệu quả phụ thuộc việc tuân thủ best practice. <b>Không</b> tối ưu class component, pattern cũ, hay component vi phạm Rules of React.</li>
+  <li>RN &lt; 0.78 (đi kèm React 19): thêm <code>react-compiler-runtime@beta</code> và đặt <code>target: '18'</code>.</li>
+</ul>
+<h3>Áp dụng từng phần</h3>
+<p>Compiler có thể lỗi ở vài file. Cấu hình <code>sources</code> để bật dần, giảm rủi ro hồi quy:</p>
+<pre><code><span class="k">const</span> ReactCompilerConfig = {
+  sources: (filename) =&gt; filename.indexOf(<span class="s">'src/path/to/dir'</span>) !== -1,
+};</code></pre>
+
+<h2 id="how">3. Compiler biến code của bạn thành gì?</h2>
+<p>Trước:</p>
+<pre><code><span class="k">export default function</span> MyApp() {
+  <span class="k">const</span> [value, setValue] = useState(<span class="s">''</span>);
+  <span class="k">return</span> (
+    &lt;TextInput onChangeText={() =&gt; { setValue(value); }}&gt;Hello World&lt;/TextInput&gt;
+  );
+}</code></pre>
+<p>Sau (rút gọn):</p>
+<pre><code><span class="k">import</span> { c <span class="k">as</span> _c } <span class="k">from</span> <span class="s">'react/compiler-runtime'</span>;
+<span class="k">export default function</span> MyApp() {
+  <span class="k">const</span> $ = <span class="h">_c(2)</span>;                       <span class="c">// bộ nhớ đệm 2 ô</span>
+  <span class="k">const</span> [value, setValue] = useState(<span class="s">''</span>);
+  <span class="k">let</span> t0;
+  <span class="k">if</span> ($[0] !== value) {               <span class="c">// value đổi?</span>
+    t0 = &lt;TextInput onChangeText={() =&gt; setValue(value)}&gt;Hello World&lt;/TextInput&gt;;
+    $[0] = value;  $[1] = t0;       <span class="c">// lưu input và kết quả</span>
+  } <span class="k">else</span> {
+    t0 = $[1];                      <span class="c">// dùng lại kết quả cũ</span>
+  }
+  <span class="k">return</span> t0;
+}</code></pre>
+<p><code>_c(n)</code> là polyfill của <code>useMemoCache(n)</code> (React 19): tạo mảng <i>n</i> ô tồn tại qua các lần render, giống <code>useRef</code>:</p>
+<pre><code><span class="k">function</span> useMemoCache(n) {
+  <span class="k">const</span> ref = useRef(Array(n).fill(<span class="k">undefined</span>));
+  <span class="k">return</span> ref.current;
+}</code></pre>
+
+<div class="demo" id="cc">
+  <h4>Demo · Bộ nhớ đệm <code>$</code> hoạt động ra sao</h4>
+  <p class="d">Bấm "Render lại" nhiều lần với cùng <code>value</code>: cache hit, không tạo mới. Đổi <code>value</code> → cache miss.</p>
+  <div class="row">
+    <button class="btn" id="cc-same">Render lại (value không đổi)</button><button class="btn" id="cc-new">Đổi value</button><button class="btn ghost" id="cc-r">Reset</button>
+  </div>
+  <div class="grid2" style="margin-top:10px">
+    <div class="card"><div class="muted" style="font-size:13px">$ = _c(2)</div>
+      <div style="font-family:var(--mono);font-size:15px;line-height:2">$[0] (value) = <b id="cc-0">undefined</b><br>$[1] (element) = <b id="cc-1">undefined</b></div></div>
+    <div class="card"><div class="muted" style="font-size:13px">Kết quả lần render gần nhất</div><div id="cc-res" style="font-size:15px">—</div>
+      <div class="muted" style="font-size:13px;margin-top:6px">hit: <b id="cc-h">0</b> · miss: <b id="cc-m">0</b></div></div>
+  </div>
+</div>
+<div class="callout warn"><b class="t">So sánh nông (shallow)</b><p>Compiler dùng so sánh nông, giống <code>React.memo</code>/<code>useMemo</code>. Cẩn thận với object/mảng làm props: nếu tham chiếu đổi, chúng bị coi là giá trị mới.</p></div>
+<p><b>React Compiler Playground</b> (trên trang React) cho bạn nhập code và xem compiler biến đổi, rất hợp để hiểu và gỡ hành vi bất ngờ.</p>
+
+<h2 id="faq">4. Hỏi nhanh</h2>
+<h3>Đã nên bỏ memo thủ công chưa?</h3>
+<p>Chưa vội. Compiler chưa thay thế hoàn toàn <code>React.memo</code>/<code>useMemo</code>/<code>useCallback</code> trong mọi trường hợp. Nếu code đang dựa nhiều vào chúng, hãy giữ cho tới khi compiler ổn định và React team xác nhận; linter sẽ chỉ ra cái nào thừa.</p>
+<h3>Cải thiện được bao nhiêu?</h3>
+<p>Thử nghiệm trên app <b>Expensify</b>: "Chat Finder Page Time to Interactive" cải thiện <b>4,3%</b>. App đã tối ưu memo tay kỹ thì chỉ cải thiện nhẹ. Compiler hiệu quả nhất với app lớn, cây component sâu, nơi một cập nhật nhỏ gây re-render dây chuyền.</p>
+<h3>Làm sao biết đã tối ưu?</h3>
+<p>Mở React DevTools: component được compiler tối ưu có huy hiệu <b>Memo ✨</b>. Trong RN có thể cần thêm bước: RN dùng bản react-devtools riêng, hãy override trong <code>package.json</code> lên <b>≥ 6.0.1</b> (kiểm tra qua biểu tượng bánh răng của DevTools), nếu không huy hiệu Memo sẽ không hiện.</p>
+<p class="src">Bổ sung: <a href="https://react.dev/learn/react-compiler" target="_blank" rel="noopener">React Compiler docs</a> · <a href="https://playground.react.dev/" target="_blank" rel="noopener">Playground</a> · <a href="https://react.dev/reference/rules" target="_blank" rel="noopener">Rules of React</a>. Cách bật cho Expo/RN hiện đại có thể khác bản beta trong sách; xem tài liệu chính thức.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Compiler memoize vào thời điểm nào?
+  <div class="opts"><button>Khi chạy (runtime) bởi người dùng</button><button>Lúc build, qua Babel plugin</button><button>Khi cài app</button></div>
+  <div class="exp">Là Babel plugin chạy lúc build.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Nên cài ESLint plugin để làm gì?
+  <div class="opts"><button>Để compiler chạy nhanh hơn</button><button>Để minify code</button><button>Phát hiện vi phạm Rules of React và chuẩn bị codebase</button></div>
+  <div class="exp">Có ích ngay cả khi chưa bật compiler.</div></div>
+<div class="q" data-ans="0"><b>3.</b> <code>$[0] !== value</code> trong code sau compile kiểm tra gì?
+  <div class="opts"><button>Input đã đổi so với lần render trước chưa — nếu chưa thì dùng lại kết quả cache</button><button>value có phải số không</button><button>Có bị leak không</button></div>
+  <div class="exp">Đó là cơ chế cache theo input.</div></div>
+<div class="chnav"><a href="chuong-7.html"><small>← Chương 7</small>Concurrent React</a><a class="next" href="chuong-9.html"><small>Chương 9 →</small>Animation mượt không rớt khung</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

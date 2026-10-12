@@ -1,0 +1,88 @@
+<span class="kicker">Chương 5 · Phần 1: JavaScript · Best practice</span>
+<h1>Component chuyên dụng bậc cao</h1>
+<p class="lead">Ngoài các primitive như <code>View</code>, <code>Text</code>, <code>TextInput</code>, React Native và thư viện bên thứ ba có các component được tối ưu cho đúng một việc. Không dùng chúng có thể "đánh sập" hiệu năng khi dữ liệu thật đổ về.</p>
+
+<h2 id="scrollview">1. Ví dụ điển hình: hiển thị danh sách</h2>
+<p>Cách quen thuộc từ web: nhét <code>View</code> vào <code>ScrollView</code>.</p>
+<pre><code><span class="k">const</span> NUMBER_OF_ITEMS = <span class="s">10</span>;   <span class="c">// chạy ngon...</span>
+<span class="k">const</span> items = Array.from({ length: NUMBER_OF_ITEMS }, (_, i) =&gt; `Item ${i + 1}`);
+
+&lt;ScrollView&gt;
+  {items.map((item, index) =&gt; (
+    &lt;View key={index}&gt;&lt;Text&gt;{item}&lt;/Text&gt;&lt;/View&gt;
+  ))}
+&lt;/ScrollView&gt;</code></pre>
+<p>Nhưng khi query trả về <b>5000</b> phần tử, FPS tụt mạnh và app không phản hồi khoảng một giây — vì <code>ScrollView</code> render <b>toàn bộ</b> phần tử ngay lập tức.</p>
+
+<h2 id="flatlist">2. FlatList và kỹ thuật windowing</h2>
+<pre><code>&lt;FlatList
+  data={items}
+  renderItem={({ item }) =&gt; &lt;View&gt;&lt;Text&gt;{item}&lt;/Text&gt;&lt;/View&gt;}
+  keyExtractor={(item, index) =&gt; index.toString()}
+/&gt;</code></pre>
+<p>Bên dưới vẫn là <code>View</code> trong <code>ScrollView</code>, nhưng <code>FlatList</code> dùng <code>VirtualizedList</code> với <b>windowing</b>: chỉ render các item trong viewport + một vùng đệm nhỏ; item trôi ra ngoài thì unmount, item mới vào thì mount. Số item "sống" luôn hữu hạn → tiết kiệm RAM và cuộn mượt.</p>
+
+<h3>FlashList: tái sử dụng (recycling) thay vì hủy/tạo</h3>
+<p><b>FlashList</b> của Shopify (drop-in thay FlatList) chạy trên RecyclerListView: view ra khỏi viewport được <b>tái chế</b> cho item khác (theo loại item, qua recycle pool) thay vì hủy rồi tạo mới.</p>
+
+<div class="demo" id="virt">
+  <h4>Demo · Ba cách render danh sách (đây là DOM thật)</h4>
+  <p class="d">Chọn số item và kiểu danh sách, rồi cuộn. Quan sát số "view" đang tồn tại và tổng số lần tạo/hủy.</p>
+  <div class="row">
+    <button class="btn ghost on" data-m="scroll">ScrollView</button><button class="btn ghost" data-m="flat">FlatList (windowing)</button><button class="btn ghost" data-m="flash">FlashList (recycling)</button>
+    <select id="virt-n" class="icon"><option>1000</option><option selected>5000</option><option>20000</option></select>
+  </div>
+  <div class="list" id="virt-l" style="margin-top:10px"></div>
+  <div class="cards" style="margin:10px 0 0">
+    <div class="card"><div class="muted" style="font-size:13px">View đang tồn tại</div><div class="stat" id="v-alive">0</div></div>
+    <div class="card"><div class="muted" style="font-size:13px">Đã tạo</div><div class="stat" id="v-created">0</div></div>
+    <div class="card"><div class="muted" style="font-size:13px">Đã hủy</div><div class="stat" id="v-destroyed">0</div></div>
+    <div class="card"><div class="muted" style="font-size:13px">Thời gian mount lần đầu</div><div class="stat" id="v-time">0 ms</div></div>
+  </div>
+</div>
+
+<h3>Khi item phức tạp: <code>getItemLayout</code></h3>
+<p>Phần tốn kém nhất là <b>đo layout</b> để biết chừa bao nhiêu chỗ cho các item sắp tới. Item phức tạp phải render hết mới đo được → chậm. Nếu biết trước chiều cao, khai báo luôn để bỏ qua bước đo:</p>
+<pre><code><span class="k">const</span> ITEM_HEIGHT = <span class="s">50</span>;
+<span class="k">const</span> getItemLayout = (_, index) =&gt; ({
+  length: ITEM_HEIGHT,
+  offset: ITEM_HEIGHT * index,
+  index,
+});
+
+&lt;FlatList data={items} renderItem={renderItem} <span class="h">getItemLayout={getItemLayout}</span> /&gt;</code></pre>
+<p>Với item cao không đều, hãy tính từ số dòng chữ và các ràng buộc layout.</p>
+
+<h2 id="flashlist">3. FlashList</h2>
+<p>FlatList nhanh hơn ScrollView rất nhiều, nhưng vẫn có thể: hiện khoảng trắng khi cuộn, cuộn lag, danh sách không "snappy", và JS thread gần như luôn bận.</p>
+<pre><code><span class="k">import</span> { FlashList } <span class="k">from</span> <span class="s">"@shopify/flash-list"</span>;
+
+&lt;FlashList
+  data={items}
+  renderItem={renderItem}
+  <span class="h">estimatedItemSize={ITEM_HEIGHT}</span>
+/&gt;</code></pre>
+<ul>
+  <li><b>estimatedItemSize</b>: kích thước xấp xỉ để quyết định render bao nhiêu item trước khi load và khi cuộn. Item không đồng đều → lấy trung bình, ví dụ (50 + 100 + 150) / 3 = <b>100px</b>.</li>
+  <li>Nếu không đặt, thư viện cảnh báo ở lần render đầu — <b>đừng bỏ qua</b>.</li>
+  <li>Item phải <b>nhẹ và không có side effect</b>, nếu không việc tái chế sẽ phản tác dụng.</li>
+</ul>
+<div class="callout"><b class="t">Con số trong sách</b>
+<p>Báo cáo Flashlight: FlashList đạt điểm <b>68/100</b> so với FlatList <b>25/100</b>, FPS ổn định quanh <b>~56</b> (vẫn còn chỗ cải thiện).</p></div>
+<div class="callout warn"><b class="t">Chú ý phiên bản</b><p>Sách viết khi FlashList v1 yêu cầu <code>estimatedItemSize</code>. Ở các phiên bản mới hơn (v2, New Architecture) prop này không còn bắt buộc — hãy xem tài liệu phiên bản bạn dùng.</p></div>
+
+<h3>Legend List — nên theo dõi</h3>
+<p>Đầu 2025, Jay Meistrich phát triển <b>Legend List</b> (1.0-beta lúc sách viết): hiệu năng gần FlashList, viết hoàn toàn bằng JavaScript, tận dụng New Architecture. Chưa sẵn sàng cho production tại thời điểm đó.</p>
+<div class="callout"><b class="t">Bài học chung</b><p>Component chuyên dụng không phải lúc nào cũng nhanh nhất, nhưng dễ thay thế để so sánh. Và như mọi dependency: bản mới có thể tối ưu hơn "miễn phí" — hoặc không. <b>Luôn đo.</b></p></div>
+<p class="src">Bổ sung: <a href="https://shopify.github.io/flash-list/" target="_blank" rel="noopener">FlashList docs</a> · <a href="https://reactnative.dev/docs/optimizing-flatlist-configuration" target="_blank" rel="noopener">Optimizing FlatList configuration</a> · <a href="https://github.com/LegendApp/legend-list" target="_blank" rel="noopener">Legend List</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Vì sao ScrollView chậm với 5000 item?
+  <div class="opts"><button>Hermes không hỗ trợ</button><button>Nó render và mount tất cả item cùng lúc</button><button>Thiếu keyExtractor</button></div>
+  <div class="exp">ScrollView không ảo hóa — mọi item đều được tạo.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Khác biệt cốt lõi giữa FlatList và FlashList?
+  <div class="opts"><button>FlashList dùng ScrollView</button><button>FlatList không có buffer</button><button>FlatList hủy/tạo view; FlashList tái chế view qua recycle pool</button></div>
+  <div class="exp">Tái chế giảm chi phí mount/unmount và áp lực GC.</div></div>
+<div class="q" data-ans="0"><b>3.</b> <code>getItemLayout</code> giúp gì?
+  <div class="opts"><button>Bỏ bước đo layout vì biết trước chiều cao item</button><button>Tự động memo item</button><button>Tăng số item buffer</button></div>
+  <div class="exp">Đo layout là phần tốn kém nhất của virtualization.</div></div>

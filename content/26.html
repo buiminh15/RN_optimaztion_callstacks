@@ -1,0 +1,63 @@
+<span class="kicker">Chương 26 · Phần 3: Bundling · Best practice</span>
+<h1>Dùng thư mục native assets</h1>
+<p class="lead">Một phần lớn kích thước app là tài nguyên: ảnh, âm thanh, video. Cả iOS lẫn Android có cơ chế gửi đúng độ phân giải cho từng thiết bị — nếu bạn đưa assets vào đúng chỗ.</p>
+
+<h2 id="density">1. Hậu tố kích thước (1x / 2x / 3x)</h2>
+<p>Thiết bị di động có độ phân giải lớn trong màn hình nhỏ (mật độ điểm ảnh cao) nên ảnh lớn hơn hiển thị rõ nét hơn. Khuyến nghị: tạo nhiều biến thể cùng một ảnh — cơ sở (1x), gấp đôi (2x), gấp ba (3x), dùng hậu tố <code>@2x</code>, <code>@3x</code>:</p>
+<pre><code>assets/
+  image.jpg       <span class="c">// 1x</span>
+  image@2x.jpg    <span class="c">// 2x</span>
+  image@3x.jpg    <span class="c">// 3x</span></code></pre>
+<p>Khi import bằng <code>require</code> chuẩn, RN chọn ảnh phù hợp mật độ màn hình hiện tại. Nhớ <b>tối ưu ảnh</b> bằng công cụ chuyên dụng để giảm dung lượng.</p>
+
+<div class="demo" id="den">
+  <h4>Demo · Thiết bị nào nhận ảnh nào?</h4>
+  <p class="d">Chọn mật độ màn hình, so sánh bundle có/không có tối ưu assets native.</p>
+  <div class="row" id="den-b"></div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><span class="pill" style="background:var(--bad-soft);color:var(--bad)">Không dùng native assets</span><div id="den-a" style="margin-top:.6em"></div></div>
+    <div class="card"><span class="pill" style="background:var(--good-soft);color:var(--good)">Native assets + thinning</span><div id="den-n" style="margin-top:.6em"></div></div>
+  </div>
+</div>
+
+<h2 id="android">2. Android: tự động</h2>
+<p>Miễn ảnh có hậu tố kích thước, Android áp dụng tối ưu này tự động. Hãy xem "dưới nắp capo": tạo AAB:</p>
+<pre><code>&gt; ./gradlew bundleRelease</code></pre>
+<p>Ra file Android App Bundle để Play Store sinh binary theo yêu cầu cho từng kiến trúc. Vào <code>android/app/build/outputs/bundle/release/app-release</code>, đổi đuôi thành <code>.zip</code> (AAB cũng chỉ là ZIP) và giải nén. Trong thư mục resources có nhiều thư mục theo mật độ màn hình Android, như <code>drawable-xhdpi-v4</code>, <code>drawable-xxhdpi-v4</code>. Hậu tố <code>@2x</code> biến mất: ảnh được xếp vào thư mục theo mật độ phù hợp nhất.</p>
+<p>Khi người dùng tải từ Google Play, bản APK theo yêu cầu cho thiết bị của họ chỉ chứa assets của <b>mật độ đó</b>, không kèm các mật độ khác.</p>
+
+<h2 id="ios">3. iOS: phải tự cấu hình Asset Catalog</h2>
+<p>Không tự động như Android. Cần tạo <b>Xcode Asset Catalog</b> (<code>.xcassets</code>) và đưa vào pipeline biên dịch.</p>
+<ol class="steps">
+  <li><b>Tạo <code>RNAssets.xcassets</code></b> trong thư mục <code>ios</code>. (Tên bắt buộc, vì đường dẫn bị hard-code trong script bundle của RN; hy vọng bỏ ràng buộc này sau.)</li>
+  <li><b>Sửa Build Phase</b> "Bundle React Native code and images" trong Build Phases: thêm biến trước dòng 8:
+<pre><code>export EXTRA_PACKAGER_ARGS=<span class="s">"--asset-catalog-dest ./"</span></code></pre></li>
+  <li><b>Build lần đầu:</b> Metro đặt assets vào catalog <code>RNAssets.xcassets</code>.</li>
+  <li><b>Hoặc chạy tay</b> để kiểm tra (chú ý <code>--asset-catalog-dest</code> trỏ vào <code>ios</code> vì chạy từ gốc dự án):
+<pre><code>&gt; npx react-native bundle \
+    --entry-file index.js \
+    --bundle-output output.js \
+    --platform ios \
+    --dev false \
+    --minify true \
+    --asset-catalog-dest ios \
+    --assets-dest &lt;your-assets-folder&gt;</code></pre></li>
+  <li><b>Upload lên App Store:</b> cơ chế <b>app thinning</b> chọn kích thước ảnh phù hợp cho từng thiết bị.</li>
+</ol>
+<div class="callout"><b class="t">Cùng ý tưởng, hai tên gọi</b><p><b>iOS — App Thinning</b>: tạo phiên bản theo thiết bị, chỉ gồm assets cần. <b>Android — AAB</b>: sinh APK tối ưu cho từng cấu hình, chia app thành thành phần tải theo nhu cầu.</p></div>
+
+<h2 id="test">4. Kết quả thử</h2>
+<p>Trên iOS, không có tối ưu → bundle chứa cả ba ảnh (lãng phí vì thiết bị chỉ dùng một kích thước). Sau khi dùng assets catalog (Emerge Tools xác nhận) chỉ còn đúng ảnh cần thiết, ví dụ <code>assets_image_image@3x.jpg</code> → tác động tốt lên kích thước app.</p>
+<div class="callout warn"><b class="t">Lưu ý thời điểm</b><p>Tại 1/2025 Assets Catalog <b>chưa bật mặc định</b>; cộng đồng đang nỗ lực biến nó thành mặc định — kiểm tra phiên bản RN của bạn.</p></div>
+<p class="src">Bổ sung: <a href="https://reactnative.dev/docs/images#static-image-resources" target="_blank" rel="noopener">RN – Static image resources</a> · <a href="https://developer.apple.com/documentation/xcode/managing-assets-with-asset-catalogs" target="_blank" rel="noopener">Apple – Asset catalogs</a> · <a href="https://developer.android.com/guide/app-bundle" target="_blank" rel="noopener">Android App Bundle</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Trên Android, vì sao hậu tố <code>@2x</code> "biến mất" trong AAB?
+  <div class="opts"><button>Ảnh bị xóa</button><button>Ảnh được xếp vào thư mục drawable theo mật độ phù hợp</button><button>Do Hermes</button></div>
+  <div class="exp">Thiết bị chỉ nhận ảnh của mật độ nó cần.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Tên bắt buộc của asset catalog trong RN iOS?
+  <div class="opts"><button>Assets.xcassets</button><button>images.xcassets</button><button>RNAssets.xcassets</button></div>
+  <div class="exp">Do đường dẫn hard-code trong script bundle.</div></div>
+<div class="q" data-ans="0"><b>3.</b> Cơ chế nào của Apple chọn kích thước ảnh theo thiết bị?
+  <div class="opts"><button>App thinning</button><button>Bitcode</button><button>Prewarming</button></div>
+  <div class="exp">Hoạt động sau khi upload lên App Store.</div></div>

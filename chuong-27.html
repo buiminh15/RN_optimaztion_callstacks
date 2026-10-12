@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 27 – Tắt nén JS bundle</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html" selected>27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#problem">Vấn đề</a><a href="#fix">Cách tắt nén</a><a href="#tradeoff">Đánh đổi</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 27 · Phần 3: Bundling · Best practice</span>
+<h1>Tắt nén JS bundle (Android)</h1>
+<p class="lead">Nén file thường là điều tốt — nhưng với JS bundle của Hermes, nén lại làm mất một tối ưu quan trọng và kéo TTI chậm đi. Đổi một chút dung lượng cài đặt để lấy tốc độ khởi động.</p>
+
+<h2 id="problem">1. Vấn đề</h2>
+<p>APK và AAB là archive nén. Khi đóng gói, hệ thống build Android nén các file nhằm giảm kích thước tải và lưu trữ — nó không phân biệt định dạng, chỉ thường bỏ qua file vốn đã nén tốt (<code>.png</code>, <code>.jpg</code>).</p>
+<p>Với app RN dùng Hermes, JS bundle cuối nằm trong <code>index.android.bundle</code>. Dù là binary, nó vẫn bị coi như tài nguyên khác nên bị nén theo mặc định.</p>
+<div class="callout bad"><b class="t">Hệ quả</b><p>File đã nén sẽ bị <b>bỏ qua khi memory mapping (mmap)</b> (xem Pull Request vào core RN). Điều này vô hiệu hóa một trong những tối ưu quan trọng nhất của Hermes → <b>TTI tệ hơn</b>.</p></div>
+
+<div class="demo" id="mm">
+  <h4>Demo · Nén hay không nén?</h4>
+  <div class="row"><label style="cursor:pointer"><input type="checkbox" id="mm-c"> <code>noCompress += ["bundle"]</code> (tắt nén)</label></div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><div class="muted" style="font-size:13px">Install size (APK mẫu)</div><div class="stat" id="mm-i"></div><div class="muted" id="mm-id" style="font-size:14px"></div></div>
+    <div class="card"><div class="muted" style="font-size:13px">TTI giả định ban đầu ~2,8 s</div><div class="stat" id="mm-t"></div><div class="muted" id="mm-td" style="font-size:14px"></div></div>
+  </div>
+  <p id="mm-n" class="muted" style="font-size:15px;margin:.6em 0 0"></p>
+</div>
+
+<h2 id="fix">2. Cách tắt nén</h2>
+<div class="callout"><b class="t">Cập nhật từ chính sách của RN</b><p>Tính đến 17/02/2025, React Native Core Team đang đưa hành vi này vào mặc định — nhiều khả năng có trong RN <b>0.79</b>. Dù dùng phiên bản nào, bạn có thể tự làm ngay:</p></div>
+<pre><code><span class="c">// android/app/build.gradle</span>
+android {
+  <span style="color:#86efac">+ androidResources {
++   noCompress += ["bundle"]
++ }</span>
+}</code></pre>
+<p>Kết quả: <code>index.android.bundle</code> không còn bị nén → kích thước app tăng, nhưng Hermes tận dụng được memory mapping và nạp bundle nhanh hơn.</p>
+
+<h2 id="tradeoff">3. Đánh đổi</h2>
+<table class="cmp"><tr><th>Chỉ số</th><th>Thay đổi</th></tr>
+<tr><td><b>Install size</b></td><td>Tăng (APK thử nghiệm 75,9 MB: <b>+6,1 MB</b>, +8%)</td></tr>
+<tr><td><b>Download size</b></td><td><b>Không ảnh hưởng</b> (kích thước tải qua mạng vẫn nén ở tầng truyền tải)</td></tr>
+<tr><td><b>TTI</b></td><td>Giảm <b>450 ms (−16%)</b> trong thử nghiệm đầu</td></tr></table>
+<div class="callout warn"><b class="t">Vẫn phải đo</b><p>Hiếm khi, nhưng có thể app của bạn không to lên vì nhiều lý do. Hãy đo kết quả và quan sát hành vi người dùng để chắc đây là lợi ròng. Rất có thể lợi ích sẽ lớn hơn chi phí.</p></div>
+<p class="src">Bổ sung: PR về memory mapping JS bundle được sách dẫn trong repo <code>facebook/react-native</code> (tìm "mmap bundle uncompressed") · <a href="https://reactnative.dev/docs/hermes" target="_blank" rel="noopener">Hermes trong RN</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="2"><b>1.</b> Vì sao bundle nén làm TTI tệ hơn?
+  <div class="opts"><button>Hermes không đọc được file nén</button><button>Nén tốn pin</button><button>File nén bị bỏ qua khi mmap nên Hermes mất tối ưu quan trọng</button></div>
+  <div class="exp">Memory mapping cần file không nén.</div></div>
+<div class="q" data-ans="0"><b>2.</b> Tắt nén ảnh hưởng thế nào đến download size?
+  <div class="opts"><button>Không ảnh hưởng, chỉ tăng install size</button><button>Tăng gấp đôi</button><button>Giảm</button></div>
+  <div class="exp">Tải qua mạng vẫn nén; chỉ chiếm nhiều chỗ hơn khi đã cài.</div></div>
+<div class="q" data-ans="1"><b>3.</b> Cấu hình nào tắt nén cho file <code>.bundle</code>?
+  <div class="opts"><button><code>shrinkResources true</code></button><button><code>androidResources { noCompress += ["bundle"] }</code></button><button><code>-dontobfuscate</code></button></div>
+  <div class="exp">Đặt trong app/build.gradle.</div></div>
+<div class="chnav"><a href="chuong-26.html"><small>← Chương 26</small>Dùng thư mục native assets</a><a class="next" href="chuong-28.html"><small>Chương 28 →</small>Thư viện và công cụ</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

@@ -1,0 +1,30 @@
+<span class="kicker">Chương 21 · Phần 3: Bundling · Best practice</span>
+<h1>Xác định kích thước thật của thư viện bên thứ ba</h1>
+<p class="lead">Hệ sinh thái JS thích "đừng làm lại điều đã có". Kết quả là npm có hàng triệu thư viện và <code>node_modules</code> chiếm hàng GB — nhưng nhờ bundler chỉ một phần nhỏ chui vào app RN. Chương này là bộ công cụ hàng ngày để biết <b>kích thước thật</b> của dependency.</p>
+
+<div class="cards">
+  <div class="card"><span class="pill">Website</span><h3 style="margin-top:.4em">bundlephobia.com</h3>
+    <p>Nhập tên package npm → kích thước <b>minified</b>, <b>nén (gzip)</b>, và cả thời gian tải (hữu ích hơn cho web). Có phân rã package và dependency của nó, giống <code>react-native-bundle-visualizer</code> (chương sau).</p></div>
+  <div class="card"><span class="pill">Website · dự phòng</span><h3 style="margin-top:.4em">pkg-size.dev</h3>
+    <p>Khi Bundlephobia từ chối một package hoặc bị sập. Cài package vào một container web và hiển thị kích thước minified &amp; nén.</p></div>
+  <div class="card"><span class="pill">IDE · thời gian thực</span><h3 style="margin-top:.4em">Import Cost (VS Code)</h3>
+    <p>Hiển thị kích thước import ngay cạnh code (cả trên Cursor…). Chạy import qua <b>Webpack</b> — vốn không hỗ trợ RN nên thường thất bại với package có code native, nhưng dùng tốt với phần còn lại.</p></div>
+</div>
+
+<div class="demo" id="pk">
+  <h4>Thực hành · Chọn công cụ phù hợp</h4>
+  <p class="d">Bạn đang ở tình huống nào?</p>
+  <div class="row" id="pk-b"></div>
+  <p id="pk-r" style="margin:.8em 0 0"></p>
+</div>
+<div class="callout warn"><b class="t">Giới hạn chung</b><p>Các số liệu từ web là <b>tham khảo</b>: chúng đo theo bundler web, không phải Metro + Hermes bytecode. Số cuối cùng phải xác nhận bằng cách phân tích bundle thật (<a href="chuong-19.html">Chương 19</a>) trước và sau khi thêm thư viện.</p></div>
+<div class="callout"><b class="t">Mẹo</b><p>Bạn có thể dùng Webpack hoặc Rspack làm bundler cho dự án RN qua <b>Re.Pack</b> — khi đó Import Cost cũng có thể phản ánh đúng hơn.</p></div>
+<p class="src">Bổ sung: <a href="https://bundlephobia.com/" target="_blank" rel="noopener">bundlephobia.com</a> · <a href="https://pkg-size.dev/" target="_blank" rel="noopener">pkg-size.dev</a> · <a href="https://marketplace.visualstudio.com/items?itemName=wix.vscode-import-cost" target="_blank" rel="noopener">Import Cost</a> · <a href="https://github.com/IjzerenHein/react-native-bundle-visualizer" target="_blank" rel="noopener">react-native-bundle-visualizer</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="0"><b>1.</b> Vì sao Import Cost hay lỗi với thư viện RN?
+  <div class="opts"><button>Nó dùng Webpack, không hỗ trợ native của RN</button><button>Nó cần Wi-Fi</button><button>Nó chỉ chạy trên Mac</button></div>
+  <div class="exp">Kết quả chỉ đáng tin với package thuần JS.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Bundlephobia bị sập, bạn dùng gì?
+  <div class="opts"><button>Flashlight</button><button>Perfetto</button><button>pkg-size.dev</button></div>
+  <div class="exp">Dịch vụ tương tự, cài package trong web container.</div></div>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 23 – Thử Tree Shaking</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html">12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html" selected>23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#how">Cách hoạt động</a><a href="#eco">Hỗ trợ trong hệ sinh thái RN</a><a href="#bench">Kỳ vọng cải thiện bao nhiêu?</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 23 · Phần 3: Bundling · Best practice</span>
+<h1>Thử nghiệm Tree Shaking</h1>
+<p class="lead">Tree shaking là kỹ thuật loại bỏ "code chết" của bundler hiện đại — như lắc cái cây để lá khô rụng. Với React Native, nó vẫn còn ở mức thử nghiệm, nhưng đáng biết.</p>
+
+<h2 id="how">1. Cách hoạt động</h2>
+<p>Hai bước: <b>① Tìm code chết</b> (export không được import ở đâu, kiểm tra xóa có an toàn không, lập bản đồ phụ thuộc) → <b>② Xóa code chết</b> (đánh dấu, xóa khi tối ưu build, chỉ giữ code app thật sự dùng).</p>
+<div class="demo" id="ts">
+  <h4>Demo · Tree shaking trong thực tế</h4>
+  <p class="d">Module <code>math.js</code> có 4 hàm export. Tick những hàm mà <code>app.js</code> import:</p>
+  <div class="row" id="ts-c"></div>
+  <div class="grid2" style="margin-top:12px">
+    <div><div class="muted" style="font-size:13px">math.js (nguồn)</div><pre id="ts-src" style="margin:.3em 0"></pre></div>
+    <div><div class="muted" style="font-size:13px">math.js (sau tree shaking)</div><pre id="ts-out" style="margin:.3em 0"></pre></div>
+  </div>
+</div>
+<div class="callout warn"><b class="t">ESM vs CommonJS</b><p>Thư viện ở dạng <b>ES Module</b> được tree shake hiệu quả hơn. Lịch sử RN luôn dùng <b>CommonJS</b> và mặc định chuyển ESM → CommonJS qua Babel preset; nhiều thư viện trong hệ sinh thái trông chờ phép chuyển đổi này và có thể hỏng nếu không có nó.</p></div>
+<p>Trong production, bundler thực hiện 4 loại tối ưu chính:</p>
+<table class="cmp"><tr><th>Kiểm tra</th><th>Việc làm</th></tr>
+<tr><td><b>Used Exports Check</b></td><td>Tìm export nào thật sự được dùng, bỏ phần còn lại</td></tr>
+<tr><td><b>Side Effects Check</b></td><td>Nhận diện code thay đổi trạng thái bên ngoài, đảm bảo gỡ an toàn</td></tr>
+<tr><td><b>Export Tracking</b></td><td>Lập bản đồ liên kết giữa module, theo dõi re-export</td></tr>
+<tr><td><b>Variable Usage</b></td><td>Theo dõi cách biến được dùng, tránh xóa nhầm code cần</td></tr></table>
+
+<h2 id="eco">2. Hỗ trợ trong hệ sinh thái RN</h2>
+<div class="cards">
+  <div class="card"><span class="pill" style="background:var(--bad-soft);color:var(--bad)">Metro</span><p>Hiện <b>không hỗ trợ</b>, nhưng có thể "giả" bằng <b>metro-serializer-esbuild</b> (rnx-kit).</p></div>
+  <div class="card"><span class="pill" style="background:var(--warn-soft);color:var(--warn)">Expo</span><p>Thử nghiệm từ <b>SDK 52</b>.</p></div>
+  <div class="card"><span class="pill" style="background:var(--good-soft);color:var(--good)">Re.Pack</span><p>Hỗ trợ <b>đầy đủ</b> nhờ Webpack/Rspack.</p></div>
+</div>
+<div class="callout"><b class="t">Platform shaking</b><p>RN đa nền tảng nên có <code>Platform</code>. Expo và Metro dùng điều này cho kỹ thuật <b>platform-shaking</b>: loại code phụ thuộc nền tảng đích (ios/android/web). Chỉ hoạt động khi import <code>Platform</code> <b>trực tiếp từ <code>react-native</code></b>.</p></div>
+
+<h3>Bật trong Expo SDK 52</h3>
+<pre><code><span class="c">// metro.config.js</span>
+<span class="k">const</span> { getDefaultConfig } = require(<span class="s">'expo/metro-config'</span>);
+<span class="k">const</span> config = getDefaultConfig(__dirname);
+config.transformer.getTransformOptions = <span class="k">async</span> () =&gt; ({
+  transform: { <span class="h">experimentalImportSupport: <span class="k">true</span></span> },
+});
+module.exports = config;
+
+<span class="c"># .env  (chỉ dùng ở production)</span>
+EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH=1
+EXPO_UNSTABLE_TREE_SHAKING=1</code></pre>
+<p><code>experimentalImportSupport</code> dùng phiên bản của Metro cho <code>@babel/plugin-transform-modules-commonjs</code>, giảm mạnh số lần resolve và đơn giản hóa bundle đầu ra; có thể kết hợp <code>inlineRequires</code> (tắt mặc định ở Expo). Có thể gặp lỗi do <b>required cycles</b> hoặc trộn CommonJS/ESM — hãy kiểm tra app build và chạy bình thường.</p>
+<h3>Re.Pack</h3>
+<p>Triển khai tree shaking "chiến trận" nhất trong hệ sinh thái RN nhờ Webpack — bật mặc định, Rspack cũng vậy: bạn không cần nghĩ tới.</p>
+
+<h2 id="bench">3. Kỳ vọng cải thiện bao nhiêu?</h2>
+<p>Benchmark dùng <b>Expensify</b> (app RN mã nguồn mở lớn) so Metro với Re.Pack, nhiều biến thể: Development, Production, Production Minified (Terser), và bản chuyển sang Hermes bytecode (HBC).</p>
+<div class="demo" id="bm">
+  <h4>Biểu đồ · Kích thước bundle (MB)</h4>
+  <div id="bm-c"></div>
+  <div class="row" style="margin-top:8px;font-size:14px"><span><i style="display:inline-block;width:12px;height:12px;background:var(--warn);border-radius:3px"></i> Metro</span><span><i style="display:inline-block;width:12px;height:12px;background:var(--accent);border-radius:3px"></i> Re.Pack</span></div>
+</div>
+<ul>
+  <li><b>Production +8%</b> của Re.Pack nghe lạ nhưng đúng kỳ vọng: Rspack chỉ <i>đánh dấu</i> code không dùng, việc xóa thật diễn ra lúc <b>minify</b>.</li>
+  <li>Chuyển sang Hermes bytecode đã bao gồm minify → bản minified cải thiện <b>11–14%</b> kể cả khi chưa qua Terser.</li>
+  <li><b>Tổng:</b> kỳ vọng giảm khoảng <b>10–15%</b> kích thước bundle cuối khi dùng Re.Pack với đủ tối ưu. Chưa đo TTI, nhưng bytecode nhỏ hơn thì nên khởi động nhanh hơn một chút và chiếm ít bộ nhớ hơn.</li>
+</ul>
+<div class="callout warn"><b class="t">Về Expo tree shaking</b><p>Nhóm thử trên cùng codebase nhưng kết quả <i>không kết luận được</i>: thấy bundle còn tăng so với Metro, nhiều khả năng do cấu hình sai. Vì tính năng còn thử nghiệm nên không đưa vào benchmark.</p></div>
+<p class="src">Bổ sung: <a href="https://webpack.js.org/guides/tree-shaking/" target="_blank" rel="noopener">Webpack – Tree shaking</a> · <a href="https://docs.expo.dev/guides/tree-shaking/" target="_blank" rel="noopener">Expo – Tree shaking</a> · <a href="https://github.com/callstack/repack" target="_blank" rel="noopener">Re.Pack</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Tree shaking hiệu quả nhất với module kiểu nào?
+  <div class="opts"><button>CommonJS</button><button>ES Module (ESM)</button><button>JSON</button></div>
+  <div class="exp">ESM có import/export tĩnh nên phân tích được.</div></div>
+<div class="q" data-ans="0"><b>2.</b> Vì sao bundle production của Re.Pack lớn hơn Metro 8%?
+  <div class="opts"><button>Rspack chỉ đánh dấu code thừa; xóa thật xảy ra khi minify</button><button>Re.Pack thêm code debug</button><button>Do tree shaking lỗi</button></div>
+  <div class="exp">Sau minify/HBC, Re.Pack nhỏ hơn 11–14%.</div></div>
+<div class="q" data-ans="2"><b>3.</b> Metro hỗ trợ tree shaking?
+  <div class="opts"><button>Có, mặc định</button><button>Có, qua Terser</button><button>Không; có thể giả bằng metro-serializer-esbuild</button></div>
+  <div class="exp">Expo đang thử nghiệm từ SDK 52.</div></div>
+<div class="chnav"><a href="chuong-22.html"><small>← Chương 22</small>Tránh barrel exports</a><a class="next" href="chuong-24.html"><small>Chương 24 →</small>Tải code từ xa khi cần</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

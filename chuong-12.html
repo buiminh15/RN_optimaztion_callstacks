@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chương 12 – Đo TTI</title><link rel="stylesheet" href="css/style.css"></head><body>
+<div id="progress"></div><header class="topbar"><div class="in">
+  <a class="brand" href="index.html">RN <span>Optimization</span></a>
+  <select id="jump" aria-label="Chọn chương"><option value="index.html">☰ Mục lục</option><option value="chuong-1.html">1. Vì sao hiệu năng quan trọng?</option><option value="chuong-2.html">2. JavaScript &amp; React: profile và đo FPS</option><option value="chuong-3.html">3. Săn memory leak trong JS</option><option value="chuong-4.html">4. Uncontrolled Components</option><option value="chuong-5.html">5. Component chuyên dụng bậc cao</option><option value="chuong-6.html">6. Atomic State Management</option><option value="chuong-7.html">7. Concurrent React</option><option value="chuong-8.html">8. React Compiler</option><option value="chuong-9.html">9. Animation mượt không rớt khung</option><option value="chuong-10.html">10. Khác biệt giữa các nền tảng</option><option value="chuong-11.html">11. Profile phần native</option><option value="chuong-12.html" selected>12. Đo TTI</option><option value="chuong-13.html">13. Quản lý bộ nhớ native</option><option value="chuong-14.html">14. Mô hình luồng TurboModules &amp; Fabric</option><option value="chuong-15.html">15. View Flattening</option><option value="chuong-16.html">16. Dùng SDK native thay vì web</option><option value="chuong-17.html">17. Làm native module nhanh hơn</option><option value="chuong-18.html">18. Săn memory leak native</option><option value="chuong-19.html">19. Phân tích kích thước JS bundle</option><option value="chuong-20.html">20. Phân tích kích thước app bundle</option><option value="chuong-21.html">21. Kích thước thật của thư viện bên thứ ba</option><option value="chuong-22.html">22. Tránh barrel exports</option><option value="chuong-23.html">23. Thử Tree Shaking</option><option value="chuong-24.html">24. Tải code từ xa khi cần</option><option value="chuong-25.html">25. Thu nhỏ code với R8 (Android)</option><option value="chuong-26.html">26. Dùng thư mục native assets</option><option value="chuong-27.html">27. Tắt nén JS bundle</option><option value="chuong-28.html">28. Thư viện và công cụ</option></select>
+  <button class="icon" id="theme" title="Đổi giao diện">◐</button></div></header><div class="layout"><aside class="toc"><h4>Trong chương</h4><a href="#why">Vì sao TTI quan trọng và "bao nhiêu là đủ"?</a><a href="#reliable">Đo cho đáng tin: chỉ đo cold start</a><a href="#markers">Các "performance marker"</a><a href="#steps">Triển khai từng giai đoạn</a><a href="#use">Dùng dữ liệu</a><a href="#quiz">Kiểm tra nhanh</a></aside><article><span class="kicker">Chương 12 · Phần 2: Native · Guide</span>
+<h1>Đo TTI (Time to Interactive)</h1>
+<p class="lead">TTI là thời gian từ lúc chạm icon đến lúc người dùng thấy nội dung có ý nghĩa và tương tác được. Đây là một trong hai chỉ số mọi app phải theo dõi. Chương này chỉ cách đo nó <b>đáng tin cậy</b>.</p>
+
+<h2 id="why">1. Vì sao TTI quan trọng và "bao nhiêu là đủ"?</h2>
+<p>TTI ảnh hưởng tới trải nghiệm, sự hài lòng, giữ chân người dùng và doanh thu. iOS thậm chí dùng machine learning để <b>prewarm</b> các app bạn hay mở, khiến app mở nhanh hơn tới ~40% — tạo ấn tượng cả hệ sinh thái nhanh dù một số app thật ra rất chậm.</p>
+<p>Nhiều báo cáo (chất lượng lẫn lộn) nói người dùng mong app mở trong 2–4 giây. Sách khuyên: <b>tin dữ liệu của bạn</b>, hoài nghi báo cáo bên ngoài. TTI nên càng thấp càng tốt, nhưng có giới hạn hợp lý: có đáng tốn nhiều tháng công sức để từ 2,9 s xuống 2,3 s trên máy Android tham chiếu không? Chỉ có hành vi người dùng của bạn trả lời được.</p>
+
+<h2 id="reliable">2. Đo cho đáng tin: chỉ đo cold start</h2>
+<p>App có thể khởi động <b>cold</b>, <b>warm/hot</b> hoặc được <b>prewarm</b>. Ví dụ app tin tức bạn mở lúc 8 giờ sáng mỗi ngày: lần "cold" mất ~10 s, vài ngày sau chỉ còn ~6 s. Còn nếu mở buổi sáng rồi quay lại buổi tối khi app còn ở background, chỉ cần render phần React — nhanh hơn rất nhiều.</p>
+<div class="callout bad"><b class="t">Sai lầm</b><p>Đo mọi lần khởi động rồi lấy trung bình → số liệu vênh vô nghĩa, không biết đã cải thiện hay thụt lùi. Chỉ đo <b>cold boot</b>, loại bỏ prewarm/warm/hot.</p></div>
+
+<h2 id="markers">3. Các "performance marker"</h2>
+<p>Mỗi giai đoạn của pipeline khởi động được đo bằng một <b>marker</b> — đoạn code ghi thời điểm sự kiện xảy ra. Ít nhất cần 5 giai đoạn:</p>
+<div class="demo" id="tti">
+  <h4>Demo · Pipeline TTI (kéo thanh để thử)</h4>
+  <p class="d">Giá trị là ví dụ minh họa. Hãy xem giai đoạn nào chiếm nhiều nhất — đó là chỗ nên tối ưu trước.</p>
+  <div id="tti-s"></div>
+  <div class="bar" style="height:34px;margin-top:8px;display:flex" id="tti-bar"></div>
+  <p style="margin:.6em 0 0">TTI tổng: <b id="tti-t" style="font-size:1.4rem"></b> · Giai đoạn lớn nhất: <b id="tti-m"></b></p>
+</div>
+<table class="cmp"><tr><th>Giai đoạn</th><th>Marker</th><th>Ý nghĩa</th></tr>
+<tr><td>Native Process Init</td><td><code>nativeAppStart</code> → <code>nativeAppEnd</code></td><td>Khởi tạo process native</td></tr>
+<tr><td>Native App Init</td><td><code>appCreationStart</code> → <code>appCreationEnd</code></td><td>Tạo app native</td></tr>
+<tr><td>JS Bundle Load</td><td><code>runJSBundleStart</code> → <code>runJSBundleEnd</code></td><td>Nạp và chạy JS bundle</td></tr>
+<tr><td>RN Root View Render</td><td><code>contentAppeared</code></td><td>Nội dung RN hiện ra</td></tr>
+<tr><td>React App Render</td><td><code>screenInteractive</code></td><td>Màn hình tương tác được → <b>TTI</b></td></tr></table>
+
+<h3>Công cụ ghi marker</h3>
+<p>Cần native module hoặc thư viện: sách dùng <b>react-native-performance</b>, nó mở class <code>RNPerformance</code> cho iOS/Android để tạo marker tùy chỉnh, rồi truy cập ở React bằng API <code>performance</code> như web:</p>
+<pre><code><span class="c">// iOS</span>
+RNPerformance.sharedInstance().mark(<span class="s">"myCustomMark"</span>)
+<span class="c">// Android</span>
+RNPerformance.getInstance().mark(<span class="s">"myCustomMark"</span>);
+
+<span class="c">// React / JS</span>
+<span class="k">import</span> performance <span class="k">from</span> <span class="s">'react-native-performance'</span>;
+performance.measure(<span class="s">'myCustomMark'</span>);
+performance.getEntriesByName(<span class="s">'myCustomMark'</span>);
+<span class="c">// [{ name: "myCustomMark", entryType: "myCustomMark", startTime: 98, duration: 2137 }]</span></code></pre>
+<div class="callout warn"><b class="t">Lưu ý</b><p>Thư viện có sẵn marker như <code>nativeLaunchStart</code>, <code>runJsBundleEnd</code>. Nhưng <code>nativeLaunchStart</code> đo ở <i>pre-main</i> (trong lúc prewarm), phần còn lại đo sau prewarm — có thể cần lọc bỏ hoặc tạo marker riêng trong <code>main()</code>.</p></div>
+
+<h2 id="steps">4. Triển khai từng giai đoạn</h2>
+<h3>① Native Process Init — xác định cold start &amp; foreground</h3>
+<div class="demo" data-tabs>
+  <div class="row" style="margin-bottom:10px"><button class="btn ghost" data-t="ios">iOS</button><button class="btn ghost" data-t="and">Android</button></div>
+  <div data-p="ios">
+<pre><code><span class="c">// cold start?</span>
+<span class="k">let</span> isColdStart = ProcessInfo.processInfo.environment[<span class="s">"ActivePrewarm"</span>] == <span class="s">"1"</span>
+
+<span class="c">// chỉ đo khi ở foreground — AppDelegate.swift</span>
+<span class="k">override func</span> application(_ application: UIApplication,
+  didFinishLaunchingWithOptions launchOptions: ...) -&gt; Bool {
+  <span class="k">if</span> application.applicationState == .active { isForegroundProcess = <span class="k">true</span> }
+  <span class="k">return true</span>
+}
+
+<span class="c">// nativeLaunchStart</span>
+<span class="k">var</span> tp = timespec(); clock_gettime(CLOCK_THREAD_CPUTIME_ID, &amp;tp)
+<span class="c">// nativeLaunchEnd ~ khi một native module được khởi tạo</span>
++ (<span class="k">void</span>) initialize</code></pre></div>
+  <div data-p="and">
+<pre><code><span class="c">// cold start? — cần onActivityCreated nên dài dòng hơn</span>
+<span class="k">class</span> MainApplication : Application(), ReactApplication {
+  <span class="k">var</span> isColdStart = <span class="k">false</span>
+  <span class="k">override fun</span> onCreate() {
+    <span class="k">super</span>.onCreate()
+    <span class="k">var</span> firstPostEnqueued = <span class="k">true</span>
+    Handler().post { firstPostEnqueued = <span class="k">false</span> }
+    registerActivityLifecycleCallbacks(<span class="k">object</span> : ActivityLifecycleCallbacks {
+      <span class="k">override fun</span> onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+        unregisterActivityLifecycleCallbacks(<span class="k">this</span>)
+        <span class="k">if</span> (firstPostEnqueued &amp;&amp; savedInstanceState == <span class="k">null</span>) isColdStart = <span class="k">true</span>
+      }
+    })
+  }
+  <span class="c">// foreground?</span>
+  <span class="k">private fun</span> isForegroundProcess(): Boolean {
+    <span class="k">val</span> info = ActivityManager.RunningAppProcessInfo()
+    ActivityManager.getMyMemoryState(info)
+    <span class="k">return</span> info.importance == IMPORTANCE_FOREGROUND
+  }
+}
+<span class="c">// nativeLaunchStart</span>
+Process.getElapsedCpuTime()
+<span class="c">// nativeLaunchEnd ~ khi ContentProvider được tạo</span>
+<span class="k">class</span> StartTimeProvider : ContentProvider() { <span class="k">override fun</span> onCreate(): Boolean {} }</code></pre></div>
+</div>
+<div class="callout warn"><b class="t">Cẩn thận pre-main</b><p>Các initializer pre-main chạy sớm — có thể hàng giờ trước khi app iOS thật sự được mở và <code>main()</code> chạy. Phải tính chênh lệch với thời điểm process start.</p></div>
+
+<h3>② Native App Init</h3>
+<p>Prewarm trên iOS chạy chuỗi khởi động đến <i>ngay trước</i> khi <code>main()</code> gọi <code>UIApplicationMain</code> → sau điểm này ta an toàn, không bị prewarm ảnh hưởng.</p>
+<table class="cmp"><tr><th></th><th>iOS</th><th>Android</th></tr>
+<tr><td><code>appCreationStart</code></td><td>hook vào <code>int main(int argc, char *argv[])</code></td><td><code>MainApplication.onCreate()</code></td></tr>
+<tr><td><code>appCreationEnd</code></td><td><code>didFinishLaunchingWithOptions</code></td><td><code>onStart</code></td></tr></table>
+
+<h3>③ JS Bundle Load → ④ Root View Render</h3>
+<p>iOS lắng nghe <code>NotificationCenter</code>; Android lắng nghe <code>ReactMarker</code>:</p>
+<table class="cmp"><tr><th>Marker</th><th>iOS</th><th>Android (ReactMarker)</th></tr>
+<tr><td><code>runJSBundleStart</code></td><td><code>RCTJavaScriptDidLoadNotification</code></td><td><code>RUN_JS_BUNDLE_START</code></td></tr>
+<tr><td><code>runJSBundleEnd</code></td><td><code>RCTJavaScriptDidLoadNotification</code></td><td><code>RUN_JS_BUNDLE_END</code></td></tr>
+<tr><td><code>contentAppeared</code></td><td><code>RCTContentDidAppearNotification</code></td><td><code>CONTENT_APPEARED</code></td></tr></table>
+<pre><code>NotificationCenter.default.addObserver(<span class="k">self</span>, selector: #selector(emit),
+  name: NSNotification.Name(<span class="s">"RCTJavaScriptDidLoadNotification"</span>), object: <span class="k">nil</span>)
+
+ReactMarker.addListener { name -&gt; <span class="k">when</span> (name) { RUN_JS_BUNDLE_START -&gt; {} } }</code></pre>
+
+<h3>⑤ React App Render — <code>screenInteractive</code></h3>
+<p>Marker này quyết định TTI tổng và <b>không có chỗ đặt chung</b>: tùy app, bạn quyết định khi nào người dùng tương tác an toàn. Cơ bản: đặt trong mount ban đầu của <code>useEffect</code> ở màn hình chính; sau đó tìm điểm tốt hơn, ví dụ khi nội dung cấp cao nhất mà người dùng thường bắt đầu đã hiển thị.</p>
+<pre><code><span class="k">export default function</span> HomeScreen() {
+  useEffect(() =&gt; { <span class="c">/* performance.mark('screenInteractive') */</span> }, []);
+  <span class="k">return</span> &lt;TabNavigator /&gt;;
+}</code></pre>
+
+<h2 id="use">5. Dùng dữ liệu</h2>
+<p>Ghép tất cả bạn có "bản đồ" toàn bộ pipeline khởi động, từ native init đến một hoặc nhiều màn hình tương tác được. Gửi dữ liệu lên database hoặc nền tảng đo real-user: quan sát trên nhiều thiết bị và <b>thay đổi theo thời gian</b>; tương quan TTI với chỉ số thành công của khách hàng. Dữ liệu này nên ảnh hưởng ưu tiên của team: lúc nào cần tối ưu, lúc nào dừng các tối ưu không còn hiệu quả.</p>
+<p class="src">Bổ sung: <a href="https://github.com/oblador/react-native-performance" target="_blank" rel="noopener">react-native-performance</a> · <a href="https://developer.android.com/topic/performance/vitals/launch-time" target="_blank" rel="noopener">Android – Launch time (cold/warm/hot)</a> · <a href="https://developer.apple.com/documentation/metrickit" target="_blank" rel="noopener">Apple MetricKit</a>.</p>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Vì sao chỉ đo cold start?
+  <div class="opts"><button>Cold start nhanh nhất</button><button>Các kiểu khởi động khác làm số đo vênh nhau, không so sánh được</button><button>Apple yêu cầu</button></div>
+  <div class="exp">Mới so sánh được cải thiện/thụt lùi một cách tin cậy.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Marker nào gần nhất với TTI tổng?
+  <div class="opts"><button>nativeAppStart</button><button>runJSBundleEnd</button><button>screenInteractive</button></div>
+  <div class="exp">Do bạn tự định nghĩa theo khi nào màn hình tương tác được.</div></div>
+<div class="q" data-ans="0"><b>3.</b> Thư viện nào được sách dùng để ghi marker?
+  <div class="opts"><button>react-native-performance</button><button>Flashlight</button><button>Perfetto</button></div>
+  <div class="exp">Nó mở RNPerformance cho cả iOS/Android và API performance cho JS.</div></div>
+<div class="chnav"><a href="chuong-11.html"><small>← Chương 11</small>Profile phần native</a><a class="next" href="chuong-13.html"><small>Chương 13 →</small>Quản lý bộ nhớ native</a></div></article></div><script src="js/app.js"></script><script src="js/demos.js"></script><script src="js/demos2.js"></script><script src="js/demos2b.js"></script><script src="js/demos2c.js"></script><script src="js/demos3.js"></script><script src="js/demos3b.js"></script><script src="js/demos3c.js"></script><script src="js/demos4.js"></script><script src="js/demos4b.js"></script></body></html>

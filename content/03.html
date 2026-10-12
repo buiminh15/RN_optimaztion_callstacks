@@ -1,0 +1,118 @@
+<span class="kicker">Chương 3 · Phần 1: JavaScript · Guide</span>
+<h1>Săn memory leak trong JavaScript</h1>
+<p class="lead">App dùng ngày càng nhiều RAM mà không bao giờ nhả ra? Khả năng cao là bạn có memory leak. Chương này giải thích leak là gì và cách tìm nó bằng công cụ thay vì đoán mò.</p>
+
+<h2 id="what">1. Memory leak là gì?</h2>
+<p>Mỗi chương trình chiếm một vùng RAM. Khi vùng nhớ đó <b>bị giữ lại ngoài ý muốn</b>, ta gọi là rò rỉ (leak). Phần lớn leak do lỗi lập trình, và rất khó lần ra nếu không có công cụ.</p>
+<p>Hermes (và mọi engine chạy trên máy ảo) có <b>garbage collector (GC)</b> — mã chạy định kỳ để quét các object và giải phóng những object không còn cần. (Vui: GC của Hermes tên là <b>Hades</b>.) GC rất thông minh, nhưng code của bạn vẫn có thể "đánh lừa" nó, khiến object còn được tham chiếu nên không bị thu dọn.</p>
+<div class="callout"><b class="t">Tóm gọn</b><p>Leak xảy ra khi chương trình không giải phóng bộ nhớ mà nó không còn cần. Với JS: object vẫn còn <b>đường tham chiếu</b> từ "gốc" (root) tới nó, nên GC coi nó là còn dùng.</p></div>
+
+<div class="demo" id="gc">
+  <h4>Demo · GC chỉ thu dọn thứ không còn ai tham chiếu</h4>
+  <p class="d">Mỗi lần vào/ra một màn hình sẽ tạo ra 3 object (ô vuông). Hãy so sánh hai kiểu rồi bấm "Chạy GC".</p>
+  <div class="row">
+    <button class="btn" id="gc-bad">Vào/ra màn hình — KHÔNG cleanup</button>
+    <button class="btn ghost" id="gc-good">Vào/ra màn hình — có cleanup</button>
+    <button class="btn ghost" id="gc-run">🗑 Chạy GC</button>
+    <button class="btn ghost" id="gc-reset">Reset</button>
+  </div>
+  <div id="gc-heap" class="dots" style="margin:14px 0;gap:4px"></div>
+  <div class="meter" id="gc-m"><i style="width:0"></i></div>
+  <p id="gc-t" class="muted" style="font-size:15px;margin:.5em 0 0"></p>
+</div>
+
+<h2 id="examples">2. Ba kiểu leak hay gặp</h2>
+<h3>① Listener không bao giờ ngừng nghe</h3>
+<pre><code><span class="k">const</span> BadEventComponent = () =&gt; {
+  useEffect(() =&gt; {
+    <span class="k">const</span> subscription = EventEmitter.addListener(<span class="s">'myEvent'</span>, handleEvent);
+    <span class="c">// ❌ thiếu cleanup → component unmount rồi mà listener (và handleEvent) vẫn sống</span>
+  }, []);
+  <span class="k">return</span> &lt;Text&gt;Listening for events...&lt;/Text&gt;;
+};
+
+<span class="c">// ✅ sửa</span>
+useEffect(() =&gt; {
+  <span class="k">const</span> subscription = EventEmitter.addListener(<span class="s">'myEvent'</span>, handleEvent);
+  <span class="k">return</span> () =&gt; subscription.remove();
+}, []);</code></pre>
+<h3>② Timer không bao giờ dừng</h3>
+<div class="callout warn"><b class="t">Lưu ý về sách</b><p>Bản PDF dán nhầm lại ví dụ listener ở mục này. Dưới đây là ví dụ timer đúng theo ý tưởng của sách.</p></div>
+<pre><code>useEffect(() =&gt; {
+  <span class="k">const</span> id = setInterval(() =&gt; tick(), <span class="s">1000</span>);
+  <span class="c">// ❌ không clearInterval → callback (và mọi thứ nó capture) sống mãi</span>
+}, []);
+
+<span class="c">// ✅ sửa</span>
+useEffect(() =&gt; {
+  <span class="k">const</span> id = setInterval(() =&gt; tick(), <span class="s">1000</span>);
+  <span class="k">return</span> () =&gt; clearInterval(id);
+}, []);</code></pre>
+<h3>③ Closure giữ tham chiếu tới dữ liệu lớn</h3>
+<pre><code><span class="k">class</span> BadClosureExample {
+  <span class="k">private</span> largeData: string[] = <span class="k">new</span> Array(<span class="s">1000000</span>).fill(<span class="s">'some data'</span>);
+  createLeakyFunction(): () =&gt; number {
+    <span class="c">// ❌ closure bắt cả `this` → giữ nguyên mảng largeData</span>
+    <span class="k">return</span> () =&gt; <span class="k">this</span>.largeData.length;
+  }
+}
+
+<span class="k">class</span> GoodClosureExample {
+  <span class="k">private</span> largeData: string[] = <span class="k">new</span> Array(<span class="s">1000000</span>).fill(<span class="s">'some data'</span>);
+  createEfficientFunction(): () =&gt; number {
+    <span class="k">const</span> length = <span class="k">this</span>.largeData.length;  <span class="c">// ✅ chỉ bắt con số cần thiết</span>
+    <span class="k">return</span> () =&gt; length;
+  }
+}</code></pre>
+
+<h2 id="devtools">3. Săn leak bằng React Native DevTools</h2>
+<p>DevTools mới xây trên Chrome DevTools nên quen web là dùng được ngay. Tab <b>Memory</b> có ba cách profile:</p>
+<table class="cmp"><tr><th>Công cụ</th><th>Dùng để</th></tr>
+<tr><td><b>Heap snapshot</b></td><td>Chụp phân bổ bộ nhớ giữa các object JS tại một thời điểm.</td></tr>
+<tr><td><b>Allocation instrumentation on timeline</b></td><td>Ghi các lần cấp phát theo thời gian; chọn một khoảng để xem object nào được cấp trong đó mà <i>vẫn còn sống</i> khi kết thúc → công cụ tốt nhất để <b>cô lập leak</b>.</td></tr>
+<tr><td><b>Allocation sampling</b></td><td>Lấy mẫu cấp phát, chi phí thấp, hợp với tác vụ chạy lâu; cho số liệu gần đúng theo call stack.</td></tr></table>
+
+<h3>Thí nghiệm của sách</h3>
+<pre><code><span class="k">let</span> leakyClosures: Function[] = [];          <span class="c">// biến global giữ closure</span>
+
+<span class="k">const</span> createClosure = () =&gt; {
+  <span class="k">const</span> newDataLeak = generateLargeData();     <span class="c">// mảng lớn</span>
+  <span class="k">return</span> () =&gt; newDataLeak.forEach(d =&gt; d.id); <span class="c">// closure bắt newDataLeak</span>
+};
+
+<span class="k">const</span> createManyLeaks = () =&gt; {
+  <span class="k">for</span> (<span class="k">let</span> i = <span class="s">0</span>; i &lt; <span class="s">10</span>; i++) {
+    <span class="k">const</span> c = createClosure();
+    leakyClosures.push(c);              <span class="c">// ❌ giữ tham chiếu để GC không thu được</span>
+    leakyClosures.forEach(fn =&gt; fn());
+  }
+};</code></pre>
+<ol class="steps">
+  <li>Mở DevTools → tab <b>Memory</b> → chọn <i>Allocation instrumentation on timeline</i> → <b>Start</b>.</li>
+  <li>Gọi <code>createManyLeaks</code> vài lần trong ~30 giây rồi dừng.</li>
+  <li>Đọc biểu đồ: <b>thanh xanh dương</b> = cấp phát còn sống; <b>chuyển xám</b> = đã được GC thu. Còn nhiều xanh → có leak.</li>
+  <li>Chọn khoảng spike đầu tiên, xem danh sách constructor, mở rộng <code>Function</code>.</li>
+  <li>So sánh hai cột: <b>Shallow size</b> (bộ nhớ riêng của object) và <b>Retained size</b> (bộ nhớ sẽ được giải phóng nếu object bị xóa).</li>
+</ol>
+<div class="callout bad"><b class="t">Dấu hiệu nhận ra leak</b><p><code>JSFunction()</code> có shallow size chỉ <b>40 byte</b> nhưng retained size tới <b>2.772.088 byte</b>! Một closure bé xíu đang níu cả mảng dữ liệu khổng lồ. DevTools còn chỉ đúng dòng code tạo ra nó.</p></div>
+<p><b>Sửa &amp; kiểm lại:</b> bỏ việc push closure vào mảng global (chỉ gọi rồi thôi). Chạy profile lần nữa → toàn bộ thanh chuyển xám (trừ cái cuối chưa kịp thu) = hết leak.</p>
+<div class="callout warn"><b class="t">GC không chạy tức thì</b><p>Vì GC chạy định kỳ, đối tượng chưa chắc biến mất ngay. Đôi khi cần cấp phát thêm thứ khác để kích hoạt thu dọn rồi mới kết luận.</p></div>
+<p class="src">Bổ sung: <a href="https://developer.chrome.com/docs/devtools/memory-problems" target="_blank" rel="noopener">Chrome DevTools – Fix memory problems</a> · <a href="https://reactnative.dev/docs/react-native-devtools" target="_blank" rel="noopener">React Native DevTools</a>.</p>
+
+<h2 id="summary">Tóm tắt</h2>
+<div class="cards">
+  <div class="card"><b>Nguyên nhân</b><p class="muted" style="margin:.3em 0 0">Listener, timer, closure, biến global vẫn tham chiếu object.</p></div>
+  <div class="card"><b>Cách sửa</b><p class="muted" style="margin:.3em 0 0">Luôn cleanup trong <code>useEffect</code>; đừng bắt cả object lớn trong closure.</p></div>
+  <div class="card"><b>Công cụ</b><p class="muted" style="margin:.3em 0 0">Allocation instrumentation; so shallow vs retained size.</p></div>
+</div>
+
+<h2 id="quiz">Kiểm tra nhanh</h2>
+<div class="q" data-ans="1"><b>1.</b> Thanh xanh dương còn nguyên sau khi profile xong nghĩa là gì?
+  <div class="opts"><button>Object đã được giải phóng</button><button>Object vẫn còn sống — có thể là leak</button><button>Hermes bị lỗi</button></div>
+  <div class="exp">Xanh = còn cấp phát; xám = đã bị GC thu.</div></div>
+<div class="q" data-ans="2"><b>2.</b> Retained size lớn hơn rất nhiều shallow size cho biết điều gì?
+  <div class="opts"><button>Object bị trùng lặp</button><button>Code chạy chậm</button><button>Object nhỏ đang níu giữ một lượng lớn bộ nhớ khác</button></div>
+  <div class="exp">Retained size là phần bộ nhớ sẽ được trả lại nếu xóa object đó.</div></div>
+<div class="q" data-ans="0"><b>3.</b> Cách đúng để tránh leak listener trong <code>useEffect</code>?
+  <div class="opts"><button>Trả về hàm cleanup gỡ listener</button><button>Dùng useMemo</button><button>Thêm dependency vào mảng rỗng</button></div>
+  <div class="exp">Hàm cleanup chạy khi unmount (hoặc trước effect kế tiếp).</div></div>
